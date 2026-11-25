@@ -1,0 +1,36 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore icon binaries (stored as base64 in this repo)
+        run: |
+          for f in $(find . -name '*.b64'); do
+            out="${f%.b64}"
+            base64 -d "$f" > "$out"
+            echo "restored $out"
+          done
+
+      - name: Build the app bundle
+        run: ./build-app.sh
+
+      - name: Package the release zip (SilverNotes.app at the zip root)
+        run: |
+          cd dist
+          zip -r ../SilverNotes-app-v0.1.0.zip SilverNotes.app
+          cd ..
+          unzip -l SilverNotes-app-v0.1.0.zip | head -8
+
+      - name: Upload the app zip as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SilverNotes-app-v0.1.0
+          path: SilverNotes-app-v0.1.0.zip
