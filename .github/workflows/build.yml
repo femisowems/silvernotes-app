@@ -20,7 +20,7 @@ jobs:
           done
 
       - name: Build the app bundle
-        run: ./build-app.sh
+        run: bash build-app.sh
 
       - name: Package the release zip (SilverNotes.app at the zip root)
         run: |
