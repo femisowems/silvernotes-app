@@ -25,11 +25,11 @@ nothing ever leaves the machine.
 *(Silver, for the light silver-grey panel the notes live on.)*
 
 > 🚧 **Work in progress** — SilverNotes is at **v0.1.0**, its first MVP
-> build. It compiles and installs on a real Mac (MacBook Air, macOS 26),
-> and a panel-display fix from the first on-device testing round is in
-> this build awaiting confirmation. Features, behaviour and this README
-> may change between versions, and things may break. Nothing below claims
-> a feature "works" beyond what the code does; the
+> build. It is **confirmed working** on a real Mac (MacBook Air,
+> macOS 26) as of November 25, 2026 — with a few first-use bugs, which
+> are tracked in [ROADMAP.md](ROADMAP.md). Features, behaviour and this
+> README may change between versions, and things may break. Nothing
+> below claims a feature "works" beyond what the code does; the
 > [status notes](#honest-status) are kept current.
 
 ---
