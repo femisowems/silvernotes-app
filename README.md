@@ -1,237 +1,338 @@
-# SilverNotes v0.1.0 MVP — first build
+<p align="center">
+  <img src="AppIcon-1024.png" width="160" alt="SilverNotes app icon — a white note card with a pale-yellow highlight line on a silver panel">
+</p>
 
-SilverNotes is an original macOS edge-notes app: a panel that lives hidden at
-the edge of your screen and slides in over whatever you are doing — including
-full-screen apps — so a note is always one gesture away. Local-first, no
-account, no server: your notes never leave your Mac.
+<h1 align="center">SilverNotes for Mac</h1>
 
-**Version:** v0.1.0 MVP (first build)
-**Platform:** macOS 13+, Universal (Apple silicon + Intel)
-**Stack:** Swift + AppKit, a single dependency-free Swift Package.
+<p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
-> **Honest status — read this first.** This code was authored on a Linux VM,
-> where AppKit does not exist, so **it has never been compiled or run**. It is
-> written to compilable intent with care around the AppKit APIs it uses, but
-> the first Mac compile may need small fixes (see the checklist at the
-> bottom). Nothing in this README claims a feature "works" — it describes
-> what is *implemented in code*; you are the first person who will see it run.
+<p align="center">
+  <img src="https://img.shields.io/badge/version-v0.1.0-e4572e" alt="Latest version">
+  <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
+  <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
+  <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
+</p>
+
+SilverNotes is a tiny macOS app that keeps your notes in a panel docked to
+the edge of your screen. The panel stays hidden — just a thin silver sliver
+at the edge — and slides in over whatever you are doing, including
+full-screen apps, when you push your pointer to the edge, press a global
+shortcut, or click the sliver. Click anywhere else and it slides away,
+handing focus back to the app you were in. It is **local-first: no account,
+no server, no sync, no tracking** — your notes are a file on your Mac and
+nothing ever leaves the machine.
+
+*(Silver, for the light silver-grey panel the notes live on.)*
+
+> 🚧 **Work in progress** — SilverNotes is at **v0.1.0**, its first MVP
+> build. It compiles and installs on a real Mac (MacBook Air, macOS 26),
+> and a panel-display fix from the first on-device testing round is in
+> this build awaiting confirmation. Features, behaviour and this README
+> may change between versions, and things may break. Nothing below claims
+> a feature "works" beyond what the code does; the
+> [status notes](#honest-status) are kept current.
 
 ---
 
-## Build & run on your Mac
+## Features
 
-You need Xcode 14+ (for the macOS 13 SDK) on macOS 13 or later.
+- **Accessory app, no Dock icon** — SilverNotes lives as a note icon in
+  your menu bar plus the edge sliver. First launch shows the panel once
+  so you can see it; after that it starts hidden, the way it is meant to
+  be used.
 
-**Option A — Xcode (recommended for the first build):**
+### Summoning the panel
 
-1. Copy this `silvernotes-app` folder to your Mac.
-2. Open `Package.swift` in Xcode (double-click it, or File → Open).
-3. Wait for the package to resolve (there are no dependencies to fetch).
-4. Choose the **SilverNotes** scheme, destination **My Mac**.
-5. Press **Run** (⌘R). The app launches as an accessory app: no Dock icon.
-   Look for the thin sliver at the right edge of your screen and the
-   note icon in the menu bar.
+- **Hot Side** — push the pointer into the last 1–2 pt of the screen edge
+  and hold for ~200 ms; the panel slides in. Suppressed while you are
+  dragging anything (drags have their own path, below), and can be
+  switched off in Settings.
+- **Global hotkey ⌃⌥⌘Space** — works from any app, registered through the
+  Carbon hot-key API, so there is **no Accessibility permission prompt**.
+  If another app already owns the combo, the failure is logged instead of
+  failing silently.
+- **Click the sliver** — the thin strip at the docked edge, mid-height.
+- **Menu-bar icon** — left-click toggles the panel; right-click opens a
+  menu (New Note, Hot Side toggle, dock side, Settings, About, Quit).
+- **Double-click the app** in Finder/Applications while it is already
+  running — the panel opens (relaunching a hidden accessory app should
+  never be a no-op).
+- **Drag-in auto-reveal** — drag a file toward the edge and hold ~250 ms
+  in the wider 12 pt zone; the panel slides in ready to receive the drop.
 
-**Option B — command line:**
+### The panel itself
 
-```sh
+- **~34% of the screen wide** (clamped to 300–560 pt), full height below
+  the menu bar, docked right by default or left if you prefer, with a
+  rounded screen-away corner and the silver-grey surface the app is
+  named for. Light and dark appearance both supported.
+- **Overlays everything** — `canJoinAllSpaces + fullScreenAuxiliary`, so
+  it appears in every Space and over full-screen apps.
+- **Click outside to dismiss** — with an allow-list: while a menu,
+  popover, share picker, save panel, alert, or the Settings window is
+  open, auto-hide is suspended so the panel never vanishes mid-action.
+- **Pin it open** — the header pin (or Settings) disables auto-hide when
+  you want the panel to stay put.
+- **Esc closes innermost-first** — formatting toolbar, then text
+  selection, then the panel.
+- **Focus is borrowed, not stolen** — the app you were in is remembered
+  and re-activated when the panel hides.
+- **Hides on screen lock**, always. Notes never stay exposed on a locked
+  Mac.
+- Slide-in verifies itself: after the animation the panel's frame is
+  checked against the screen, and snapped into place if the animation
+  did not land. (This is the fix for the first build's "double-click and
+  nothing happens" behaviour — see [Honest status](#honest-status).)
+
+### Notes and folders
+
+- **Folder home** — flat folder rows (pinned first) with note counts and
+  colour dots; right-click a row to pin, rename, or delete it. Deleting
+  a folder sends its notes to the Trash — it never destroys them.
+- **Card stack** — notes are cards in a scrolling column; a new note
+  lands at the **top**, already focused. Header carries back, folder
+  title, search, +, and the panel pin.
+- **Search across all folders**, title matches first, then body matches.
+- **Per-note footer on every card** — **Aa** (formatting popover), pin,
+  gear menu, timestamp, share (`NSSharingServicePicker`), trash.
+- **Gear menu** — Pin (⌥⌘P), Fold (⌥⌘⏎), Color (7 swatches + Default),
+  Mode (Standard ⌥⌘1 / Plain Text ⌥⌘2 / Code ⌥⌘3), Clear Completed
+  Tasks, Export Note as Markdown.
+- **Panel shortcuts** ⌥⌘P / ⌥⌘⏎ / ⌥⌘1–3 act on the card you most
+  recently edited.
+
+### The editor — the card is the editor
+
+- **Hidden Markdown, honestly implemented.** In Standard mode you type
+  Markdown and it renders in place — but rendering is **attribute-only
+  over the source text**. Marker characters are visually concealed,
+  never removed: the file on disk and the text in the editor are always
+  your exact source, undo contains only *your* edits, and switching a
+  note between Standard, Plain, and Code modes is byte-identical.
+- **The subset:** headings (#–###), **bold**, *italic*,
+  ~~strikethrough~~, ==underline==, ::highlight::, `inline code`,
+  fenced code blocks, [links](url), > quotes, bullet and numbered
+  lists, `- [ ]` task lists, `---` separators. Tables are deliberately
+  excluded in the MVP.
+- **::highlight::** renders as a pale-yellow highlight — and only with
+  non-alphanumeric boundaries, so `std::vector` in your code notes never
+  triggers it, and an unclosed `::` renders literally instead of
+  swallowing your paragraph.
+- **Clickable task checkboxes** — click the glyph to tick a task (an
+  ordinary undoable source edit); the card footer shows done/total
+  progress.
+- **Floating formatting toolbar** on any selection — Bold, Italic,
+  Highlight, Strikethrough, Code, Link, Task — every action implemented
+  as a source edit, so nothing the toolbar does can be erased by the
+  next render pass.
+- **IME-safe** — rendering suspends while composed (marked) text is
+  active and re-applies on commit. Non-negotiable for CJK input.
+- **Paste is always plain text** — what lands is the text you copied,
+  not a blob of web HTML (HTML→Markdown conversion is on the deferred
+  list, stated plainly below).
+- **Plain mode** renders literally; **Code mode** is monospaced with
+  spellcheck and substitutions off.
+
+### Files in notes
+
+- Drag any file onto a card (or drag to the edge to reveal the panel,
+  then drop): the file is **copied into** the app's Attachments folder
+  and shown as a preview card — thumbnail for images, Finder icon for
+  everything else. Click a preview to open the copy.
+- Embedded copies are a deliberate choice over security-scoped
+  bookmarks: a note can never break because the original file moved.
+  The cost is disk use, and it is stated here rather than hidden.
+
+### Trash
+
+- Deleted notes go to a Trash view and are **kept for 30 days**, then
+  purged automatically on launch. Restore puts a note back — and if its
+  folder was deleted meanwhile, it is re-homed instead of lost.
+
+## Requirements
+
+- macOS 13 (Ventura) or later, Apple silicon or Intel (Universal).
+- To build from source: **Xcode** (the package targets the macOS 13 SDK).
+  No Apple Developer account, no App Store, no paid enrolment — the
+  build is ad-hoc signed for your own machine.
+
+## Building from source
+
+```bash
+git clone https://github.com/femisowems/silvernotes-app.git
 cd silvernotes-app
-swift build            # debug build
-swift run SilverNotes  # build + launch
-# or, release:
-swift build -c release
-./.build/release/SilverNotes
+./build-app.sh   # builds the release binary and assembles dist/SilverNotes.app
 ```
 
-To quit: right-click the menu-bar note icon → **Quit SilverNotes**
-(or `pkill SilverNotes` from Terminal).
+`build-app.sh` runs `swift build -c release`, wraps the binary in a
+`SilverNotes.app` bundle (bundle id `io.starterdev.silvernotes`,
+`LSUIElement`, minimum macOS 13.0, app icon included), and ad-hoc
+codesigns it. Or open `Package.swift` in Xcode and press ⌘R — the
+package has **zero dependencies** to resolve.
 
-**Your data** lives in `~/Library/Application Support/SilverNotes/`:
-`store.json` (all folders + notes), `Attachments/` (embedded file copies),
-`Backups/` (rotating snapshots, newest 7, taken at most hourly).
+> **Restoring from this repo:** the icon binaries (`AppIcon.icns`, the
+> icon source PNGs) are stored as base64 text (`*.b64`) because the
+> backup channel is text-only. Decode them back before building —
+> see [RESTORE-NOTES.md](RESTORE-NOTES.md). Everything else in the
+> repo is the file itself.
+
+## Installing
+
+1. Build from source (above), or unzip a release build someone handed
+   you, so you have a `SilverNotes.app`.
+2. Drag **SilverNotes.app** into your Applications folder and
+   double-click it. The app is ad-hoc signed (not notarized), so on
+   first launch macOS may block it — right-click the app and choose
+   **Open**, then **Open** again in the dialog, or use System Settings →
+   Privacy & Security → **Open Anyway**. You only do this once.
+3. On first launch the panel slides in once, so you can see it. After
+   that it starts hidden: look for the **thin sliver at the right edge
+   of your screen, mid-height**, and the **note icon in the menu bar**.
+
+**Updating:** quit the old copy (`pkill -x SilverNotes` works), replace
+the app in Applications with the new build, launch it. Your notes are
+not inside the app — they live in Application Support (below) and are
+untouched by replacing the app.
+
+## How to use it
+
+| Action | What it does |
+| --- | --- |
+| **⌃⌥⌘Space** | Show / hide the panel, from any app |
+| **Push pointer to the screen edge** (~200 ms) | Show the panel (Hot Side) |
+| **Click the sliver** | Show the panel |
+| **Click the menu-bar note icon** | Toggle the panel |
+| **Right-click the menu-bar icon** | Menu: New Note, Hot Side, dock side, Settings, Quit |
+| **Double-click the app** (already running) | Show the panel |
+| **Click outside the panel** | Hide it (unless pinned open) |
+| **Esc** (panel open) | Close toolbar → clear selection → hide panel |
+| **⌘N** (app focused) | New note |
+| **⌥⌘P** (editing a card) | Pin / unpin the note |
+| **⌥⌘⏎** (editing a card) | Fold / unfold the note |
+| **Double-click a card's footer strip** | Fold / unfold that note |
+| **⌥⌘1 / ⌥⌘2 / ⌥⌘3** | Note mode: Standard / Plain Text / Code |
+| **Drag a file onto a card** | Embed a copy of the file in the note |
+| **Click a task's checkbox glyph** | Tick / untick the task |
+| **⌘,** | Open Settings |
+
+### Good to know
+
+- **The panel's width is a proportion, not a preference** — ~34% of
+  your screen, clamped between 300 and 560 pt. Drag-resizing and a
+  Wide (~48%) step are planned, not built.
+- **Modes never rewrite your text.** Standard, Plain, and Code are
+  renderings of one stored source. Switch freely; the bytes do not
+  change.
+- **Your data folder is yours:** delete `~/Library/Application
+  Support/SilverNotes` and everything — notes, attachments, backups —
+  is gone. Quitting the app changes nothing on disk.
+- **Backups are automatic:** the store snapshots itself at most hourly,
+  keeping the newest 7. A corrupt store file is quarantined (renamed,
+  never deleted) and the newest backup restored.
+
+## What's next
+
+- **CloudKit sync (V1.1)** — the MVP is local-first by decision; sync
+  arrives as an opt-in layer over the same store, with the
+  conflicted-copy strategy designed before it ships, not after.
+- **iOS companion** — planned as a bundled/discounted companion for Mac
+  owners; the Mac app is the product, the phone app is the satellite.
+- **Drag-resize + Wide step**, folder/note drag-reorder, per-display
+  dock-side memory, bulk export, HTML→Markdown paste conversion, a
+  dedicated VoiceOver audit, syntax highlighting in code blocks.
+- **Licensing** — SilverNotes is planned at **$19.99 per major
+  version** with a 30-day trial. No paywall or licence enforcement
+  exists in the MVP build; the price is a product decision recorded
+  here, not a gate in the code.
+
+## What it deliberately does not do
+
+- **No sync yet.** Local-first is the MVP's defining decision, not an
+  omission. (This is the established apps' real advantage — noted
+  honestly.)
+- **No account, no telemetry, no network calls at all.** There is no
+  server to phone home to.
+- **No tables in Markdown** — excluded from the MVP subset by decision;
+  pasted tables arrive as plain-text lines. Revisit in V2.
+- **No nested folders in the UI** — the schema reserves
+  `parentFolderID` from day one so nesting needs no data migration
+  when it lands.
+
+## How it works
+
+SilverNotes is a dependency-free Swift Package (AppKit, macOS 13+),
+~3,400 lines across 13 source files, each concern in one file:
+
+- **Panel** — an `NSPanel` (borderless, non-activating, floating)
+  docked to the screen edge, plus a second tiny panel for the sliver.
+  Show/hide is a frame animation with a post-animation on-screen
+  verification. Triggers (Hot Side, drag-in, click-outside, Esc
+  layering) are `NSEvent` monitors; the global hotkey is Carbon, so no
+  Accessibility permission is involved anywhere.
+- **Editor** — each card hosts an `NSTextView` holding the note's
+  source. `MarkdownEngine` renders by computing an attributed copy and
+  copying *attributes only* onto the editor's storage, so characters
+  are never touched by rendering.
+- **Store** — one versioned JSON document (`store.json`,
+  `schemaVersion: 1`) in Application Support, written atomically,
+  saved on a debounce while typing and immediately for structural
+  changes, with rotating backup snapshots. The models are Codable and
+  storage-agnostic — the register's SQLite recommendation can still be
+  adopted later as a store-layer change only. Attachments are embedded
+  file copies under `Attachments/<noteID>/`.
+
+## Project layout
+
+```
+silvernotes-app/
+├── Sources/SilverNotes/
+│   ├── App.swift                  # entry point, main menu, menu-bar item
+│   ├── PanelController.swift      # panel + sliver, show/hide, triggers
+│   ├── PanelContentController.swift # folder home, card stack, search, trash views
+│   ├── NoteCardView.swift         # one card: editor host, footer, gear menu, attachments
+│   ├── NoteTextView.swift         # the editor; attribute-only rendering glue
+│   ├── MarkdownEngine.swift       # hidden-Markdown renderer (subset above)
+│   ├── FormattingToolbar.swift    # floating selection toolbar
+│   ├── NoteStore.swift            # JSON store, trash retention, attachments, backups
+│   ├── Models.swift               # folder / note / attachment / store document
+│   ├── HotKeyManager.swift        # Carbon ⌃⌥⌘Space registration
+│   ├── SettingsController.swift   # settings window, launch-at-login (SMAppService)
+│   ├── Preferences.swift          # UserDefaults keys and accessors
+│   └── Theme.swift                # colour and font tokens (light + dark)
+├── IconSource/                    # icon artwork (binaries stored as .b64 — see RESTORE-NOTES.md)
+├── AppIcon.icns                   # bundled app icon (stored as AppIcon.icns.b64 in this repo)
+├── Package.swift                  # dependency-free Swift Package, macOS 13+
+├── build-app.sh                   # release build → dist/SilverNotes.app, ad-hoc signed
+└── README.md
+```
+
+## Privacy
+
+SilverNotes collects nothing. There is no analytics, no account, no
+tracking, and no network code in the app at all. Your notes, folders,
+and attachments live in `~/Library/Application Support/SilverNotes/`
+on your Mac, in a JSON file you can open and read yourself. Delete
+that folder and everything is gone.
+
+## Honest status
+
+- v0.1.0 was authored on a Linux VM (no AppKit), then compiled on a
+  MacBook Air: the first compile surfaced three errors, all fixed.
+- First on-device testing found the panel did not visibly appear even
+  though the app ran — root-caused in review to the slide-in animation
+  being started in the same runloop turn as the panel's first
+  `orderFront`, which can drop the animation and leave the panel
+  parked off-screen while the app believes it is visible. The current
+  build animates on the next tick, verifies the settled frame
+  on-screen, and snaps into place if needed. **That fix is in this
+  code and is awaiting the confirming on-device test** — it will be
+  marked confirmed here when it has been seen working, not before.
+- A full audit of all 13 source files (November 25, 2026) found no
+  force-unwraps, force-casts, or `fatalError`s; one Auto Layout defect
+  (width constraints activated before the views entered the stack,
+  which macOS dropped with a "no common ancestor" warning) was found
+  from the app's own console output and fixed.
 
 ---
 
-## How the two specs were used
-
-This build follows **both** source documents; where they conflicted, the
-Ambiguity Register and the adopted decisions won.
-
-**From the Mockup Designs spec (visual geometry & tokens):**
-
-- Panel width ~34% of the screen, Wide step ~48% noted as a future step
-  (not in MVP — see Deferred), panel/card corner radii, spacing scale,
-  card-stack layout with per-note footer, light + dark token palette,
-  type scale (14 pt body, 20/17/15 headings), slide animation in the
-  350–500 ms band (400 ms in, 350 ms out, cubic-bezier 0.25/0.1/0.25/1).
-
-**From the Ambiguity Register + the 8 adopted decisions (behaviour, data,
-platform):**
-
-- Everything the mockups can't show: hide/show rules, Hot Side tuning,
-  editor semantics, storage, Trash, modes, shortcuts, lock behaviour,
-  focus return, and all 8 decisions listed below.
-
-No conflicts required a judgement call beyond that rule: the mockups'
-34% width and the register's 300–560 pt floor/cap combine as
-"34%, clamped to 300–560 pt", which is what the code does.
-
----
-
-## The 8 adopted decisions — where each lives in code
-
-| # | Decision | Implementation |
-|---|----------|----------------|
-| 1 | Trash with 30-day retention | `NoteStore.moveToTrash / restoreFromTrash / purgeExpiredTrash` (soft-delete via `deletedAt`, auto-purge on launch), Trash view in `PanelContentController` |
-| 2 | Flat folders; nesting reserved | `SNFolder.parentFolderID` exists in the schema, always nil in the MVP UI |
-| 3 | $19.99 / major version, 30-day trial | Product fact only — noted in Settings; **no licensing or paywall is built into the MVP** |
-| 4 | Name: SilverNotes | Throughout |
-| 5 | Local-first MVP, no sync | JSON store on disk only; no CloudKit code anywhere (V1.1) |
-| 6 | Double-click footer folds; body double-click selects a word | `FooterStripView.mouseDown` (clickCount == 2) in `NoteCardView.swift`; body untouched |
-| 7 | Tables excluded from Markdown | `MarkdownEngine` has no table support; pasted tables land as plain-text lines |
-| 8 | macOS 13+, Universal | `Package.swift` platform `.macOS(.v13)` |
-
----
-
-## What is implemented (in code)
-
-**Panel & triggers**
-
-- `NSPanel` docked right by default (left selectable in Settings), width
-  34% of the screen clamped to 300–560 pt, full height below the menu bar
-  (`NSScreen.visibleFrame`), silver-grey translucent surface, rounded
-  screen-away corner, slide animation ~400 ms with the mockup-spec easing;
-  reduced-motion respected.
-- `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` so the
-  panel overlays full-screen apps and appears in every Space.
-- Collapsed sliver at the edge, mid-height; click opens the panel.
-- Hot Side: 1–2 pt edge strip, ~200 ms dwell, suppressed while any mouse
-  button is down (drag suppression), off switch in Settings.
-- Drag-in auto-reveal: while dragging, entering a 12 pt edge zone for
-  ~250 ms slides the panel in, ready to receive the drop.
-- Global hotkey ⌃⌥⌘Space via Carbon `RegisterEventHotKey` — **no
-  Accessibility permission prompt**.
-- Click-outside hides, with an allow-list: menus, popovers, the share
-  picker, save panels, alerts and the Settings window suspend auto-hide.
-  Pin-open (header pin or Settings) disables auto-hide. Esc closes
-  innermost-first (toolbar → selection → panel).
-- Focus is captured before showing and restored to the previous app on hide.
-- Panel hides on screen lock / session resign, always.
-- Menu-bar icon: click toggles, right-click menu (New Note, Settings, Quit).
-
-**Notes & folders**
-
-- Folder home: flat folder rows, pinned first, note counts, colour dots,
-  context menu (pin / rename / delete — deleting a folder sends its notes
-  to Trash, never destroys them).
-- Notes: vertical scrolling card stack; new note appears at the **top** and
-  is focused. Header: back, folder title, search toggle, +, panel pin.
-- Search across all folders, title matches first.
-- Per-note footer: **Aa** (formatting popover), **pin**, **gear**,
-  timestamp, **share** (`NSSharingServicePicker`), **trash**.
-- Gear menu: Pin ⌥⌘P, Fold ⌥⌘⏎, Color (7 swatches + Default), Mode
-  Standard ⌥⌘1 / Plain ⌥⌘2 / Code ⌥⌘3, Clear Completed Tasks,
-  Export Note as Markdown.
-- Panel-level ⌥⌘P / ⌥⌘⏎ / ⌥⌘1–3 act on the most recently edited card.
-
-**Editor (Standard mode = hidden Markdown)**
-
-- The card is the editor. Rendering is **attribute-only over the source
-  text**: markers are visually concealed, characters never change, so
-  undo contains only your edits and mode switches are byte-identical.
-- Subset: headings, **bold**, *italic*, ~~strikethrough~~, ==underline==,
-  ::highlight:: (pale yellow; requires non-alphanumeric boundaries so
-  `std::vector` never triggers; unclosed markers render literally),
-  `inline code`, fenced code blocks, [links](url), > quotes, bullet and
-  numbered lists, `- [ ]` task lists, `---` separators.
-- Tasks: click the checkbox glyph to tick/untick (an undoable source edit);
-  the footer shows a done/total progress count.
-- IME safety: rendering suspends while marked text is active and re-applies
-  on commit.
-- Floating quick-formatting toolbar on selection: Bold, Italic, Highlight,
-  Strikethrough, Code, Link, Task — all implemented as source edits.
-- Paste always lands as plain text (see Deferred for HTML conversion).
-- Plain mode renders literally; Code mode is monospaced with spellcheck and
-  substitutions off. Mode never mutates the stored source.
-
-**Files**
-
-- Drag a file onto a card (or drag to the edge to reveal the panel, then
-  drop): the file is **copied into** the app's Attachments folder and shown
-  as a preview card — image thumbnail + filename for images, Finder icon +
-  filename for everything else. Click a preview to open the copy.
-  *(Choice documented in `NoteStore.swift`: embedded copies instead of
-  security-scoped bookmarks, so a note can never break when the original
-  file moves; the cost is disk use.)*
-
-**Data**
-
-- Versioned JSON store (`schemaVersion: 1`), atomic writes, debounced
-  saves while typing, rotating backup snapshots (hourly, keep 7), corrupt
-  store is quarantined (never deleted) and the newest backup restored.
-- Seed content on first run: a Welcome note, a build checklist, a coffee
-  note, a "back burner" list — all original, written for SilverNotes.
-
-**Settings**
-
-- Dock side (left/right, applied immediately), Hot Side on/off, show-markup
-  toggle, launch at login via `SMAppService` (real; starts hidden).
-
----
-
-## Deferred to V1.1+ (not in this build — stated plainly)
-
-- **CloudKit sync** (Decision 5) and the conflicted-copy strategy.
-- **Drag-resize** of the panel and the **Wide (~48%) step**.
-- **SQLite storage** — the register recommended SQLite via a third-party
-  dependency; this build is deliberately dependency-free and uses a
-  versioned JSON store instead (models are storage-agnostic, so the
-  migration is a store-layer change).
-- **Bulk export** (folder of Markdown files + JSON sidecar) and single-note
-  image export. Single-note Markdown export *is* in the gear menu.
-- **HTML → Markdown paste conversion**: paste is plain-text only in v0.1.0.
-- **Full VoiceOver pass**: standard controls are used throughout and the
-  panel is fully keyboard-reachable, but the custom editor has not had a
-  dedicated VoiceOver audit.
-- **Folder drag-reorder and note drag-reorder**: sorting is pinned-first,
-  then stored order; new notes go to the top. Drag-reorder is not built.
-- **Per-display side memory**: the panel follows the pointer's screen when
-  summoned; the side setting is global, not per-display.
-- **Licensing / trial enforcement** for the $19.99 pricing (Decision 3 is
-  a product decision; no paywall exists in the MVP).
-- Syntax highlighting inside code blocks (monospaced only in MVP).
-- Pinch-to-fold, per-note fonts, tags, folder nesting UI (schema reserved).
-
----
-
-## First-Mac-compile checklist
-
-The code has never been compiled (authored on Linux; no macOS SDK there).
-Expect the first build to need **small** fixes, most likely in these areas:
-
-1. **Carbon hotkey glue** (`HotKeyManager.swift`) — the `InstallEventHandler`
-   closure signature and `EventHotKeyID` construction are the most
-   C-interop-sensitive lines in the project.
-2. **Sliver drawing** (`PanelController.swift`, `SliverView.draw`) —
-   `NSBezierPath.appendArc` angle directions may need flipping so the
-   rounded corners land on the correct side.
-3. **Card height updates** (`NoteCardView.updateTextHeight`) — if a card
-   renders too tall/short, the fix is in the layout-manager used-rect
-   calculation there.
-4. **Attribute pass** (`NoteTextView.refreshRendering`) — if any styling
-   looks doubled or missing, check the reset-then-apply order there.
-5. General Swift 5.7+ strictness: any optionals or selector signatures the
-   compiler flags. Selectors are stringly-typed in a few places
-   (`#selector` targets are all `@objc` methods in the same class).
-
-Fix loop: build in Xcode → the error list points at the file/line → the
-code is organised so each concern lives in one file (panel, editor,
-markdown, store, settings) → fix → ⌘R.
-
-**Suggested first-run checks** (from the register's QA list): panel over a
-full-screen app; panel in a second Space; lock the screen with the panel
-open (it must hide); drag a file from Finder onto a note; type
-`::these words::`, `std::vector`, and an unclosed `::` — only the first
-should highlight; switch a note Standard → Code → Plain → Standard and
-confirm the text is unchanged; quit and relaunch — notes, pins, folds and
-Trash must be exactly as you left them.
+Built by [Femi Sowemimo](https://github.com/femisowems) (StarterDev).
