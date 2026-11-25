@@ -38,12 +38,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Double-clicking the app in Finder/Applications while it is already
     /// running lands here. Without this, relaunching a hidden accessory
     /// app visibly does nothing at all.
+    ///
+    /// NOTE: there is deliberately NO applicationOpenUntitledFile here.
+    /// AppKit calls that during a COLD launch (via _doOpenUntitled,
+    /// before applicationDidFinishLaunching), and routing it to show()
+    /// crashed the app on launch — EXC_BREAKPOINT in PanelController.show()
+    /// before setUp() had run (crash reports 2026-11-25 16:55). Panel
+    /// show() is now also self-guarding via ensureSetUp(), but the
+    /// untitled-file hook stays removed: a cold launch is already covered
+    /// by the first-launch auto-show in applicationDidFinishLaunching.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        PanelController.shared.show()
-        return false
-    }
-
-    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         PanelController.shared.show()
         return false
     }

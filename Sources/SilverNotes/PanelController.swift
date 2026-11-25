@@ -21,6 +21,7 @@ final class PanelController: NSObject {
     let contentController = PanelContentController()
     private var panel: NSPanel!
     private var sliver: NSPanel!
+    private var didSetUp = false
     private var isPanelVisible = false
     private var previousApp: NSRunningApplication?
 
@@ -36,7 +37,18 @@ final class PanelController: NSObject {
 
     // MARK: Setup
 
+    /// Lazily runs setUp() on first use. CRITICAL: AppKit can deliver
+    /// launch-time events (e.g. the open/reopen Apple event) that reach
+    /// show() BEFORE applicationDidFinishLaunching has called setUp() —
+    /// with panel/sliver still nil, touching them traps (EXC_BREAKPOINT,
+    /// crash reports 2026-11-25 16:55). Every public entry point routes
+    /// through here first, so the IUOs below are never touched unset.
+    private func ensureSetUp() {
+        if !didSetUp { setUp() }
+    }
+
     func setUp() {
+        guard !didSetUp else { return }
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 600),
                         styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
@@ -68,6 +80,7 @@ final class PanelController: NSObject {
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(activeSpaceDidChange),
             name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        didSetUp = true
     }
 
     private func buildSliver() {
@@ -125,6 +138,7 @@ final class PanelController: NSObject {
     var panelIsVisible: Bool { isPanelVisible }
 
     func toggle() {
+        ensureSetUp()
         if isPanelVisible && panelIsOnScreen { hide() } else { show() }
     }
 
@@ -138,6 +152,7 @@ final class PanelController: NSObject {
     }
 
     func show() {
+        ensureSetUp()
         if isPanelVisible && panelIsOnScreen { return }
         print("SilverNotes: show() — panel sliding in")
         previousApp = NSWorkspace.shared.frontmostApplication
@@ -179,6 +194,7 @@ final class PanelController: NSObject {
     }
 
     func hide() {
+        ensureSetUp()
         guard isPanelVisible else { return }
         isPanelVisible = false
         FormattingToolbar.shared.hide()
@@ -206,6 +222,7 @@ final class PanelController: NSObject {
 
     /// Re-dock after the side preference changes: geometry, sliver, corner.
     func sideDidChange() {
+        ensureSetUp()
         positionSliver()
         contentController.updateRoundedCorner(for: Preferences.panelSide)
         if isPanelVisible, let screen = panel.screen ?? NSScreen.main {
@@ -214,6 +231,7 @@ final class PanelController: NSObject {
     }
 
     func createNoteShortcut() {
+        ensureSetUp()
         show()
         contentController.createNoteAndFocus()
     }
