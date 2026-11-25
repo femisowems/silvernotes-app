@@ -7,8 +7,8 @@ Package.swift, build-app.sh, README. Binary assets — the app icon
 NOT in this repo; the `.b64` files are the byte-exact originals, encoded.
 To restore one, decode it back to its real name:
 
-    base64 -d AppIcon.icns.b64 > AppIcon.icns
-    base64 -d IconSource/AppIcon-master-1024.png.b64 > IconSource/AppIcon-master-1024.png
+    base64 -d -i AppIcon.icns.b64 -o AppIcon.icns
+    base64 -d -i IconSource/AppIcon-master-1024.png.b64 -o IconSource/AppIcon-master-1024.png
 
 Same pattern for every `.b64` file (iconset sizes, alternate icons,
 size preview). After decoding, the tree matches the buildable project:
