@@ -303,7 +303,8 @@ silvernotes-app/
 ├── AppIcon.icns                   # bundled app icon (stored as AppIcon.icns.b64 in this repo)
 ├── Package.swift                  # dependency-free Swift Package, macOS 13+
 ├── build-app.sh                   # release build → dist/SilverNotes.app, ad-hoc signed
-└── README.md
+├── README.md
+└── ROADMAP.md                     # improvement list, version arc, confirmation checklist
 ```
 
 ## Privacy
