@@ -81,8 +81,10 @@ nothing ever leaves the machine.
   Mac.
 - Slide-in verifies itself: after the animation the panel's frame is
   checked against the screen, and snapped into place if the animation
-  did not land. (This is the fix for the first build's "double-click and
-  nothing happens" behaviour — see [Honest status](#honest-status).)
+  did not land — a safety net, kept even though the first build's
+  "double-click and nothing happens" behaviour turned out to be a
+  launch crash, not an animation problem (see
+  [Honest status](#honest-status)).
 
 ### Notes and folders
 
@@ -315,19 +317,49 @@ and attachments live in `~/Library/Application Support/SilverNotes/`
 on your Mac, in a JSON file you can open and read yourself. Delete
 that folder and everything is gone.
 
+## Troubleshooting
+
+- **The app won't open, or opens and instantly vanishes** — check for a
+  crash report: `ls -t ~/Library/Logs/DiagnosticReports/ | grep -i
+  silver`. The exception type and the first frames of the crashed
+  thread say exactly where it died; that is how the v0.1.0 launch
+  crash below was found.
+- **Gatekeeper blocks the first open** — the build is ad-hoc signed,
+  not notarized (yet — see ROADMAP.md). Right-click the app → Open →
+  Open. Needed once.
+- **Quit it fully** — menu-bar note icon → Quit SilverNotes, or
+  `pkill -x SilverNotes` in Terminal.
+- **Run it from Terminal to see its log lines** —
+  `/Applications/SilverNotes.app/Contents/MacOS/SilverNotes`. It logs
+  its detected screen, sliver frame, and the panel's settled frame on
+  every show.
+- **Start from a clean slate** — quit the app and delete
+  `~/Library/Application Support/SilverNotes/`; the next launch
+  re-seeds the starter folders and notes.
+
 ## Honest status
 
+- **Working — confirmed on a real Mac (November 25, 2026).** v0.1.0
+  runs on the developer's MacBook Air: the panel opens, notes and
+  folders work. In the developer's words, "a working version with a
+  few bugs" — those first-use bugs are being collected in
+  [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
 - v0.1.0 was authored on a Linux VM (no AppKit), then compiled on a
   MacBook Air: the first compile surfaced three errors, all fixed.
-- First on-device testing found the panel did not visibly appear even
-  though the app ran — root-caused in review to the slide-in animation
-  being started in the same runloop turn as the panel's first
-  `orderFront`, which can drop the animation and leave the panel
-  parked off-screen while the app believes it is visible. The current
-  build animates on the next tick, verifies the settled frame
-  on-screen, and snaps into place if needed. **That fix is in this
-  code and is awaiting the confirming on-device test** — it will be
-  marked confirmed here when it has been seen working, not before.
+- The road here was not straight, and the record matters: the first
+  build ran but showed nothing. A reopen handler added while
+  debugging then made it worse — AppKit calls
+  `applicationOpenUntitledFile` during a *cold* launch, before
+  `applicationDidFinishLaunching` has set anything up, and routing it
+  to `show()` trapped on the still-nil panel (`EXC_BREAKPOINT`,
+  confirmed from the crash reports, not guessed). An animation-based
+  theory was investigated first and turned out to be wrong; the
+  self-verifying slide-in it produced stays in the code as a safety
+  net. The actual fix: every public entry point on the panel
+  controller runs a self-guarding `ensureSetUp()` first, and the
+  untitled-file hook was removed entirely. It shipped in the current
+  v0.1.0 release build (SHA-256 `c22a132e…a34`) and is the build
+  confirmed working above.
 - A full audit of all 13 source files (November 25, 2026) found no
   force-unwraps, force-casts, or `fatalError`s; one Auto Layout defect
   (width constraints activated before the views entered the stack,
