@@ -84,8 +84,9 @@ final class SettingsController: NSObject, NSWindowDelegate {
             ("command", "Shortcuts"),
         ]
         for (index, spec) in paneSpecs.enumerated() {
+            let symbol = NSImage(systemSymbolName: spec.0, accessibilityDescription: spec.1) ?? NSImage()
             let button = NSButton(title: "  \(spec.1)",
-                                  image: NSImage(systemSymbolName: spec.0, accessibilityDescription: spec.1),
+                                  image: symbol,
                                   target: self, action: #selector(paneButtonClicked(_:)))
             button.tag = index
             button.bezelStyle = .inline
