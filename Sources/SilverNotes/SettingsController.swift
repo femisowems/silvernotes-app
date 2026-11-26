@@ -61,15 +61,19 @@ final class SettingsController: NSObject, NSWindowDelegate {
                               y: 146, action: #selector(markupChanged(_:)))
         markup.state = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey) ? .on : .off
 
+        // The status label must exist BEFORE refreshLaunchAtLoginState()
+        // runs — the refresh writes statusLabel.stringValue in every
+        // branch, and the label is an implicitly unwrapped optional:
+        // refreshing first trapped on first open (v0.1.0–v0.2.0).
+        statusLabel = label("", y: 92)
+        statusLabel.textColor = SNTheme.secondaryText
+
         launchAtLoginCheckbox = checkbox("Launch at login (starts hidden, panel closed)",
                                          y: 120, action: #selector(launchAtLoginChanged(_:)))
         refreshLaunchAtLoginState()
 
-        statusLabel = label("", y: 92)
-        statusLabel.textColor = SNTheme.secondaryText
-
         _ = label("Toggle the panel from anywhere: Control + Option + Command + Space.", y: 62)
-        let version = label("SilverNotes v0.2.0 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
+        let version = label("SilverNotes v0.2.1 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
         version.textColor = SNTheme.secondaryText
         version.maximumNumberOfLines = 2
         version.lineBreakMode = .byWordWrapping
