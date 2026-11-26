@@ -6,9 +6,9 @@ import ServiceManagement
 ///
 /// General carries launch at login (real, via SMAppService on macOS
 /// 13+), Hot Side, panel side (per-display, audit 6.13), the
-/// Standard/Wide width step (7.2), pin panel open (4.50), the licence
-/// line (4.51), Check for Updates (GitHub Releases, via UpdateChecker),
-/// and the version footer. Appearance carries the note-colour style
+/// Standard/Wide width step (7.2), pin panel open (4.50), Check for
+/// Updates (GitHub Releases, via UpdateChecker), and the version
+/// footer. Appearance carries the note-colour style
 /// (2.19) and the Compact density (7.1). Editor carries Show Markdown
 /// markup and the body font size (3.14). Backups surfaces the store's
 /// backup rotation read-only (4.52). Shortcuts is a read-only list.
@@ -214,22 +214,22 @@ final class SettingsController: NSObject, NSWindowDelegate {
         widthControl.frame = NSRect(x: 24, y: 152, width: 160, height: 24)
         pane.addSubview(widthControl)
 
-        _ = paneLabel("Licence", in: pane, y: 122, bold: true)
-        _ = paneLabel("$19.99 one-time, per major version · 30-day direct trial", in: pane, y: 102)
-
+        // The update row moved up in v0.5.0 to close the gap left by a
+        // removed block, so the pane keeps its spacing rhythm instead
+        // of leaving a hole above the version footer.
         updateButton = NSButton(title: "Check for Updates…", target: self,
                                 action: #selector(updateButtonClicked))
         updateButton.bezelStyle = .rounded
-        updateButton.frame = NSRect(x: 24, y: 62, width: 168, height: 24)
+        updateButton.frame = NSRect(x: 24, y: 102, width: 168, height: 24)
         pane.addSubview(updateButton)
 
         updateStatusLabel = NSTextField(labelWithString: "")
         updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
         updateStatusLabel.textColor = SNTheme.secondaryText
-        updateStatusLabel.frame = NSRect(x: 200, y: 65, width: 226, height: 18)
+        updateStatusLabel.frame = NSRect(x: 200, y: 105, width: 226, height: 18)
         pane.addSubview(updateStatusLabel)
 
-        let version = NSTextField(labelWithString: "SilverNotes v0.4.0")
+        let version = NSTextField(labelWithString: "SilverNotes v0.5.0")
         version.font = NSFont.systemFont(ofSize: 11)
         version.textColor = SNTheme.secondaryText
         version.frame = NSRect(x: 24, y: 16, width: 402, height: 16)
@@ -259,7 +259,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         densityControl.selectedSegment = Preferences.density == .compact ? 1 : 0
         densityControl.frame = NSRect(x: 24, y: 210, width: 200, height: 24)
         pane.addSubview(densityControl)
-        let densityNote = paneLabel("Compact turns note lists into one-line rows with a capture field and keyboard hints — a triage view at a narrower width.", in: pane, y: 162)
+        let densityNote = paneLabel("Compact turns note lists into one-line rows with a capture field and keyboard hints — a triage view at the same panel width.", in: pane, y: 162)
         densityNote.textColor = SNTheme.secondaryText
         densityNote.maximumNumberOfLines = 2
         densityNote.lineBreakMode = .byWordWrapping

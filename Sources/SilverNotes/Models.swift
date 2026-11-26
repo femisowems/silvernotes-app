@@ -211,7 +211,35 @@ struct StoreData: Codable {
     var schemaVersion: Int
     var folders: [SNFolder]
     var notes: [SNNote]
+    /// True once the user has created a note of their own (v0.5.0).
+    /// Seeded notes do NOT count. Until this flips, an empty folder
+    /// shows the first-run welcome variant of the empty state instead
+    /// of "Nothing in <folder> yet" (design package; Nov 26 audit
+    /// 4.44). Stores written before v0.5.0 carry no such key and must
+    /// decode it as false — hence the custom decoder below, the same
+    /// backward-compatibility pattern SNAttachment's optional fields
+    /// rely on.
+    var userCreatedNote: Bool = false
 
     static let currentSchemaVersion = 1
     static var empty: StoreData { StoreData(schemaVersion: currentSchemaVersion, folders: [], notes: []) }
+
+    init(schemaVersion: Int, folders: [SNFolder], notes: [SNNote], userCreatedNote: Bool = false) {
+        self.schemaVersion = schemaVersion
+        self.folders = folders
+        self.notes = notes
+        self.userCreatedNote = userCreatedNote
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, folders, notes, userCreatedNote
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        folders = try container.decode([SNFolder].self, forKey: .folders)
+        notes = try container.decode([SNNote].self, forKey: .notes)
+        userCreatedNote = try container.decodeIfPresent(Bool.self, forKey: .userCreatedNote) ?? false
+    }
 }

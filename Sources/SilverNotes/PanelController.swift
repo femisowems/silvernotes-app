@@ -116,10 +116,12 @@ final class PanelController: NSObject {
     }
 
     // MARK: Geometry (mockup spec: Standard ~34% of screen width with a
-    // 300–560 pt clamp; Wide ~48% (audit 7.2); Compact narrows to
-    // 272–300 (audit 7.1). Height runs from below the menu bar to the
-    // PHYSICAL screen bottom (audit 1.3) — a visible bottom Dock does
-    // not lift it. The side is remembered per display (audit 6.13).)
+    // 300–560 pt clamp; Wide ~48% (audit 7.2). Compact is a DENSITY at
+    // that same 34% width — "rows, not cards", per the design package
+    // (Variation B/C prose and the spec table; Nov 26 audit item 8.2) —
+    // not a third, narrower width. Height runs from below the menu bar
+    // to the PHYSICAL screen bottom (audit 1.3) — a visible bottom Dock
+    // does not lift it. The side is remembered per display (audit 6.13).)
 
     private func targetScreen() -> NSScreen {
         let mouse = NSEvent.mouseLocation
@@ -131,11 +133,13 @@ final class PanelController: NSObject {
     private func panelFrame(on screen: NSScreen, visible: Bool) -> NSRect {
         let visibleFrame = screen.visibleFrame
         let width: CGFloat
-        if Preferences.density == .compact {
-            width = min(max(visibleFrame.width * 0.34, 272), 300)
-        } else if Preferences.panelWidth == .wide {
+        if Preferences.panelWidth == .wide && Preferences.density != .compact {
             width = min(max(visibleFrame.width * 0.48, 380), 1000)
         } else {
+            // Standard width — and Compact, which is a density at this
+            // same width, never a narrower panel (Nov 26 audit 8.2).
+            // Compact keeps its precedence over the Wide step, exactly
+            // as before; only its width value changes.
             width = min(max(visibleFrame.width * 0.34, 300), 560)
         }
         let side = Preferences.effectivePanelSide(for: screen)

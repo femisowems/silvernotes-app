@@ -1,8 +1,9 @@
 import AppKit
 
 /// Floating quick-formatting toolbar shown above a non-empty text selection
-/// in a note (Bold / Italic / Highlight / Strikethrough / Code / Link / Task).
-/// One shared instance; it retargets whichever NoteTextView is active.
+/// in a note (Bold / Italic / Underline / Highlight / Strikethrough / Code /
+/// Link / Task). One shared instance; it retargets whichever NoteTextView
+/// is active.
 final class FormattingToolbar: NSPanel {
 
     static let shared = FormattingToolbar()
@@ -15,7 +16,9 @@ final class FormattingToolbar: NSPanel {
     // new designated initializer, not an override (NSResponder's init() is
     // a convenience initializer).
     private init() {
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 252, height: 32),
+        // Width grew 252 → 272 in v0.5.0 to fit the Underline button
+        // (Nov 26 audit 8.1) without squeezing the others.
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 272, height: 32),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         level = .popUpMenu
@@ -24,7 +27,7 @@ final class FormattingToolbar: NSPanel {
         hasShadow = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let bar = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 252, height: 32))
+        let bar = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 272, height: 32))
         bar.material = .hudWindow
         bar.blendingMode = .withinWindow
         bar.state = .active
@@ -32,14 +35,19 @@ final class FormattingToolbar: NSPanel {
         bar.layer?.cornerRadius = 9
         bar.layer?.masksToBounds = true
 
-        let stack = NSStackView(frame: NSRect(x: 6, y: 3, width: 240, height: 26))
+        let stack = NSStackView(frame: NSRect(x: 6, y: 3, width: 260, height: 26))
         stack.orientation = .horizontal
         stack.spacing = 2
         stack.alignment = .centerY
 
+        // Button order follows the design package's toolbar
+        // (B I U S ｜ H ｜ link, checklist — Nov 26 audit 8.1), with the
+        // app's Inline code button kept after Highlight as a deliberate
+        // extra the package doesn't list.
         let specs: [(title: String, tip: String, action: Selector)] = [
             ("B", "Bold", #selector(actBold)),
             ("I", "Italic", #selector(actItalic)),
+            ("U", "Underline", #selector(actUnderline)),
             ("H", "Highlight", #selector(actHighlight)),
             ("S", "Strikethrough", #selector(actStrike)),
             ("<>", "Inline code", #selector(actCode)),
@@ -106,6 +114,7 @@ final class FormattingToolbar: NSPanel {
 
     @objc private func actBold() { if let t = target { EditorActions.bold(t); refresh(t) } }
     @objc private func actItalic() { if let t = target { EditorActions.italic(t); refresh(t) } }
+    @objc private func actUnderline() { if let t = target { EditorActions.underline(t); refresh(t) } }
     @objc private func actHighlight() { if let t = target { EditorActions.highlight(t); refresh(t) } }
     @objc private func actStrike() { if let t = target { EditorActions.strikethrough(t); refresh(t) } }
     @objc private func actCode() { if let t = target { EditorActions.inlineCode(t); refresh(t) } }

@@ -872,6 +872,11 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             railRow(symbol: "folder", title: folder.name, count: store.noteCount(in: folder.id),
                     selected: selected) { [weak self] in self?.openFolder(folder.id) }
         }
+        // New Folder sits between the folders and Trash in the
+        // package's rendered rail (Nov 26 audit 8.3) — a plus row with
+        // no count, wired to the same prompt the folder home uses.
+        railRow(symbol: "plus", title: "New Folder", count: nil,
+                selected: false) { [weak self] in self?.promptNewFolder() }
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         railStack.addArrangedSubview(spacer)
@@ -885,6 +890,9 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     /// The designed empty folder (design package): a 54×54 icon tile,
     /// headline, the three-capture-paths teaching line, and a flat
     /// accent New Note button — vertically centred (audits 4.40–4.43).
+    /// First-run variant (audit 4.44): the same component, with the
+    /// folder name in the headline swapped for a welcome line, shown
+    /// until the user has created a note of their own.
     private func emptyFolderState(folderName: String) -> NSView {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -899,7 +907,9 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         glyph.translatesAutoresizingMaskIntoConstraints = false
         tile.addSubview(glyph)
 
-        let headline = NSTextField(labelWithString: "Nothing in \(folderName) yet")
+        let headline = NSTextField(labelWithString: store.hasUserCreatedNote
+                                   ? "Nothing in \(folderName) yet"
+                                   : "Welcome to SilverNotes")
         headline.font = NSFont.systemFont(ofSize: 14, weight: .bold)
         headline.textColor = SNTheme.primaryText
         headline.alignment = .center

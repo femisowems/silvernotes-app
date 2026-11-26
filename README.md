@@ -246,15 +246,11 @@ untouched by replacing the app.
 - **CloudKit sync (V1.1)** — the MVP is local-first by decision; sync
   arrives as an opt-in layer over the same store, with the
   conflicted-copy strategy designed before it ships, not after.
-- **iOS companion** — planned as a bundled/discounted companion for Mac
-  owners; the Mac app is the product, the phone app is the satellite.
+- **iOS companion** — planned as a companion for Mac owners; the Mac
+  app is the product, the phone app is the satellite.
 - **Drag-resize + Wide step**, folder/note drag-reorder, per-display
   dock-side memory, bulk export, HTML→Markdown paste conversion, a
   dedicated VoiceOver audit, syntax highlighting in code blocks.
-- **Licensing** — SilverNotes is planned at **$19.99 per major
-  version** with a 30-day trial. No paywall or licence enforcement
-  exists in the MVP build; the price is a product decision recorded
-  here, not a gate in the code.
 
 ## What it deliberately does not do
 

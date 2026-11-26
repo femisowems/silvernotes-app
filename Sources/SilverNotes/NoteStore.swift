@@ -128,6 +128,11 @@ final class NoteStore {
 
     // MARK: Queries
 
+    /// False only in the genuine first-run state: a fresh (or freshly
+    /// seeded) store in which the user has not yet created a note of
+    /// their own. Drives the welcome variant of the empty-folder state.
+    var hasUserCreatedNote: Bool { data.userCreatedNote }
+
     var folders: [SNFolder] {
         data.folders.sorted { a, b in
             if a.isPinned != b.isPinned { return a.isPinned }
@@ -229,6 +234,11 @@ final class NoteStore {
         let topIndex = (data.notes.filter { $0.folderID == folderID }.map(\.sortIndex).min() ?? 1) - 1
         let note = SNNote(folderID: folderID, body: body, sortIndex: topIndex)
         data.notes.append(note)
+        // Every creation path funnels through here (new-note button,
+        // capture field, drop-to-create), so this is the one place the
+        // first-run flag flips. seedIfNeeded() resets it after seeding —
+        // seed content is not the user creating a note.
+        data.userCreatedNote = true
         save(); onStructuralChange?()
         return note
     }
@@ -534,6 +544,10 @@ final class NoteStore {
         - A tiny "parking lot" folder for thoughts that interrupt deep work
         """
         _ = createNote(in: projects.id, body: ideas)
+        // The four notes above are seed content: creating them flipped
+        // the first-run flag via createNote, so put it back — the user
+        // has still created nothing of their own.
+        data.userCreatedNote = false
         save()
     }
 }

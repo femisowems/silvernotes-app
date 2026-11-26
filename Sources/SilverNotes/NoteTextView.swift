@@ -201,6 +201,7 @@ enum EditorActions {
 
     static func bold(_ tv: NoteTextView) { wrapSelection(tv, prefix: "**", suffix: "**") }
     static func italic(_ tv: NoteTextView) { wrapSelection(tv, prefix: "*", suffix: "*") }
+    static func underline(_ tv: NoteTextView) { wrapSelection(tv, prefix: "==", suffix: "==") }
     static func strikethrough(_ tv: NoteTextView) { wrapSelection(tv, prefix: "~~", suffix: "~~") }
     static func highlight(_ tv: NoteTextView) { wrapSelection(tv, prefix: "::", suffix: "::") }
     static func inlineCode(_ tv: NoteTextView) { wrapSelection(tv, prefix: "`", suffix: "`") }

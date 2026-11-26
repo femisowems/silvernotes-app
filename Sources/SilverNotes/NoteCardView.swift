@@ -507,6 +507,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         let specs: [(String, Selector)] = [
             ("Bold", #selector(fmtBold)),
             ("Italic", #selector(fmtItalic)),
+            ("Underline", #selector(fmtUnderline)),
             ("Highlight", #selector(fmtHighlight)),
             ("Strike", #selector(fmtStrike)),
             ("Code", #selector(fmtCode)),
@@ -521,7 +522,9 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         }
         controller.view = stack
         popover.contentViewController = controller
-        popover.contentSize = NSSize(width: 340, height: 40)
+        // Width grew 340 → 420 in v0.5.0 to fit the Underline button
+        // (Nov 26 audit 8.1) alongside the existing seven.
+        popover.contentSize = NSSize(width: 420, height: 40)
         PanelController.shared.beginChildInteraction()
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
         // The popover is transient; clear the auto-hide suspension when it closes.
@@ -532,6 +535,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     @objc private func fmtBold() { EditorActions.bold(textView); afterFormat() }
     @objc private func fmtItalic() { EditorActions.italic(textView); afterFormat() }
+    @objc private func fmtUnderline() { EditorActions.underline(textView); afterFormat() }
     @objc private func fmtHighlight() { EditorActions.highlight(textView); afterFormat() }
     @objc private func fmtStrike() { EditorActions.strikethrough(textView); afterFormat() }
     @objc private func fmtCode() { EditorActions.inlineCode(textView); afterFormat() }
