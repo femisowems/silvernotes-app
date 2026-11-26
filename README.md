@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.3.0-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.4.0-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,14 +24,18 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.3.0**: Check for
-> Updates (in Settings and the menu-bar menu, with a verified
-> one-click install) and a launch loading screen, on top of the
-> v0.2.0 mockup-fidelity visual pass and the v0.2.1 Settings hotfix.
+> 🚧 **Work in progress** — SilverNotes is at **v0.4.0**: the full
+> mockup-fidelity release — every fixable item from a 138-point
+> audit against the design package (custom gear menu, folder home
+> with All Notes/Pinned, bottom-bar actions, five-pane Settings,
+> Compact density, the Wide step with folder rail, drawn checklist
+> ticks and progress bar, marker-band highlights, linked file
+> drops, drag-reorder) — on top of v0.3.0's Check for Updates and
+> launch loading screen.
 > The MVP is **confirmed working** on a real Mac (MacBook Air,
 > macOS 26) as of November 25, 2026 — with a few first-use bugs,
 > which are tracked in [ROADMAP.md](ROADMAP.md).
-> v0.3.0 itself is CI-built and awaiting its on-device confirmation
+> v0.4.0 itself is CI-built and awaiting its on-device confirmation
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
 > Nothing below claims a feature "works" beyond what the code does;
@@ -349,6 +353,30 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.4.0 (November 25, 2026) — the full mockup-fidelity release,
+  CI-built, not yet confirmed on a Mac.** A 138-item audit of the
+  app against the approved mockup package (65 match / 43 mismatch /
+  19 missing) drove this release; every fixable mismatch and
+  missing element is addressed. The designed chrome is now real:
+  a custom gear menu (the package's own surface, type and swatch
+  row — eight colours kept, in the package's order), folder home
+  leading with All Notes and Pinned, a working bottom bar
+  (fold-all, sort, folder export), and a five-pane Settings window
+  (General / Appearance / Editor / Backups / Shortcuts) carrying
+  Panel width and Pin-panel-open. Checklists get drawn round
+  ticks, strikethrough done text and the progress bar; highlights
+  render as a marker band; file cards sit above the note text
+  with an "Open in Quick Look" row and honest provenance. Compact
+  density and the Wide step (folder rail) arrive as the package
+  drew them, along with drag-reorder, per-display side memory,
+  cursor-leave grace and the drop-target state. New file drops
+  are linked, not copied (images still embed; existing
+  attachments untouched). Esc now closes the panel in one press
+  from editing — a deliberate deviation from the package, made at
+  the user's direction. The one audit item not built: the
+  package's "three built-in themes" exist only as a prose
+  mention, with no names or values to build to. The confirmation
+  checklist in [ROADMAP.md](ROADMAP.md) carries the v0.4.0 checks.
 - **v0.3.0 (November 25, 2026) — Check for Updates + launch loading
   screen, CI-built, not yet confirmed on a Mac.** Settings and the
   menu-bar menu both carry a "Check for Updates…" option; the app
