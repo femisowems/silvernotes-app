@@ -68,6 +68,9 @@ final class NoteTextView: NSTextView {
         isAutomaticSpellingCorrectionEnabled = false
         isContinuousSpellCheckingEnabled = true
         drawsBackground = false
+        // Selection wash per the package (rubric §1.5):
+        // rgba(63,110,165,0.32) instead of the system selection colour.
+        selectedTextAttributes = [.backgroundColor: SNTheme.selectionBackground]
         defaultParagraphStyle = SNTheme.bodyParagraphStyle
         textContainerInset = NSSize(width: 6, height: 6)
         isVerticallyResizable = true

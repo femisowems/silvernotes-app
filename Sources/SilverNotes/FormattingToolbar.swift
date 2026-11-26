@@ -37,31 +37,57 @@ final class FormattingToolbar: NSPanel {
 
         let stack = NSStackView(frame: NSRect(x: 6, y: 3, width: 260, height: 26))
         stack.orientation = .horizontal
-        stack.spacing = 2
+        stack.spacing = 1
         stack.alignment = .centerY
 
         // Button order follows the design package's toolbar
-        // (B I U S ｜ H ｜ link, checklist — Nov 26 audit 8.1), with the
-        // app's Inline code button kept after Highlight as a deliberate
-        // extra the package doesn't list.
+        // (B I U S ｜ Highlight Link Checklist — rubric §1.15), with
+        // the app's Inline code button kept after Highlight as a
+        // deliberate extra the package doesn't list. Buttons are
+        // 25 pt tall, min 25 wide, radius 5, near-white text; the
+        // Highlight button is the package's yellow chip.
         let specs: [(title: String, tip: String, action: Selector)] = [
             ("B", "Bold", #selector(actBold)),
             ("I", "Italic", #selector(actItalic)),
             ("U", "Underline", #selector(actUnderline)),
-            ("H", "Highlight", #selector(actHighlight)),
             ("S", "Strikethrough", #selector(actStrike)),
+            ("H", "Highlight", #selector(actHighlight)),
             ("<>", "Inline code", #selector(actCode)),
             ("Link", "Insert link", #selector(actLink)),
             ("☑", "Make checklist item", #selector(actTask)),
         ]
-        for spec in specs {
+        for (index, spec) in specs.enumerated() {
             let button = NSButton(title: spec.title, target: self, action: spec.action)
             button.bezelStyle = .inline
             button.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
             button.toolTip = spec.tip
             button.focusRingType = .none
+            button.contentTintColor = NSColor(srgbRed: 0xF2/255, green: 0xF2/255, blue: 0xF5/255, alpha: 1)
+            button.wantsLayer = true
+            button.layer?.cornerRadius = 5
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 25).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 25).isActive = true
+            if spec.tip == "Highlight" {
+                // The package's chip: #FFD60A fill, dark text, 3 pt
+                // corners, bold letter (rubric §1.15).
+                button.font = NSFont.systemFont(ofSize: 12, weight: .bold)
+                button.contentTintColor = NSColor(srgbRed: 0x26/255, green: 0x26/255, blue: 0x2B/255, alpha: 1)
+                button.layer?.backgroundColor = NSColor(srgbRed: 0xFF/255, green: 0xD6/255, blue: 0x0A/255, alpha: 1).cgColor
+                button.layer?.cornerRadius = 3
+            }
             buttons.append(button)
             stack.addArrangedSubview(button)
+            if index == 3 {
+                // The package's 1×16 separator between Strikethrough
+                // and Highlight (rubric §1.15).
+                let separator = NSView()
+                separator.wantsLayer = true
+                separator.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.22).cgColor
+                separator.translatesAutoresizingMaskIntoConstraints = false
+                stack.addArrangedSubview(separator)
+                separator.widthAnchor.constraint(equalToConstant: 1).isActive = true
+                separator.heightAnchor.constraint(equalToConstant: 16).isActive = true
+            }
         }
         bar.addSubview(stack)
         contentView = bar

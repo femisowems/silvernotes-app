@@ -55,6 +55,13 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
     private let softShadowLayer = CALayer()
     private var surfaceColor: NSColor = SNTheme.cardBackground
     private var pinButton: NSButton!
+    /// Footer elements whose visibility depends on the fold state
+    /// (rubric §2 A5): the rule and share/trash hide on a folded card,
+    /// the unfold chevron shows only there.
+    private var shareButton: NSButton!
+    private var trashButton: NSButton!
+    private var unfoldButton: NSButton!
+    private let footerRule = NSView()
     private var textHeightConstraint: NSLayoutConstraint!
     private var progressHeightConstraint: NSLayoutConstraint!
     private var progressBarHeightConstraint: NSLayoutConstraint!
@@ -167,7 +174,8 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         addSubview(footerView)
 
         // Hairline rule above the footer, per the design package.
-        let footerRule = NSView()
+        // Stored (not a local) since v0.6.0: a folded card drops the
+        // rule (rubric §2 A5), so applyFold toggles it.
         footerRule.wantsLayer = true
         footerRule.layer?.backgroundColor = SNTheme.hairline.cgColor
         footerRule.translatesAutoresizingMaskIntoConstraints = false
@@ -210,7 +218,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            footerView.heightAnchor.constraint(equalToConstant: 30),
+            footerView.heightAnchor.constraint(equalToConstant: 36),
 
             footerRule.topAnchor.constraint(equalTo: footerView.topAnchor),
             footerRule.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
@@ -301,8 +309,12 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
         pinButton = footerButton(symbol: "pin", tip: "Pin note (⌥⌘P)", action: #selector(togglePin))
         let gearButton = footerButton(symbol: "gearshape", tip: "Note options", action: #selector(showGearMenu(_:)))
-        let shareButton = footerButton(symbol: "square.and.arrow.up", tip: "Share", action: #selector(shareNote(_:)))
-        let trashButton = footerButton(symbol: "trash", tip: "Move to Trash", action: #selector(trashNote))
+        shareButton = footerButton(symbol: "square.and.arrow.up", tip: "Share", action: #selector(shareNote(_:)))
+        trashButton = footerButton(symbol: "trash", tip: "Move to Trash", action: #selector(trashNote))
+        // Folded cards swap share/trash for an unfold chevron
+        // (rubric §2 A5); applyFold drives its visibility.
+        unfoldButton = footerButton(symbol: "chevron.down", tip: "Unfold", action: #selector(unfoldTapped))
+        unfoldButton.isHidden = true
 
         timestampLabel.font = NSFont.systemFont(ofSize: 10.5)
         timestampLabel.textColor = SNTheme.footerText
@@ -310,8 +322,9 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         timestampLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // Footer order per the design package: Aa · pin · gear ·
-        // timestamp · share · trash.
-        let stack = NSStackView(views: [aaButton, pinButton, gearButton, timestampLabel, shareButton, trashButton])
+        // timestamp · share · trash (the unfold chevron rides at the
+        // end, visible only while folded, where share/trash hide).
+        let stack = NSStackView(views: [aaButton, pinButton, gearButton, timestampLabel, shareButton, trashButton, unfoldButton])
         stack.orientation = .horizontal
         stack.spacing = 2
         stack.alignment = .centerY
@@ -320,9 +333,12 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         timestampLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         footerView.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -6),
-            stack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            // Footer content aligns with the card's 13 pt text inset,
+            // and sits 6 pt under the footer rule (1 pt rule + 5 pt
+            // padding, rubric §1.7) inside the 36 pt footer block.
+            stack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: 13),
+            stack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -13),
+            stack.topAnchor.constraint(equalTo: footerView.topAnchor, constant: 6),
         ])
     }
 
@@ -391,6 +407,12 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         textScroll.isHidden = folded
         attachmentsStack.isHidden = folded
         foldedLabel.isHidden = !folded
+        // Folded footer per the package's render (rubric §2 A5): no
+        // top rule, and an unfold chevron where share/trash sat.
+        footerRule.isHidden = folded
+        shareButton.isHidden = folded
+        trashButton.isHidden = folded
+        unfoldButton.isHidden = !folded
         if folded {
             // Plain first line, no disclosure prefix (audit 4.12).
             foldedLabel.stringValue = note.title
@@ -585,6 +607,11 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
                       ))
     }
 
+    /// The folded card's unfold chevron (rubric §2 A5) needs an
+    /// @objc entry point; the fold itself is the same toggleFold()
+    /// the footer double-click runs.
+    @objc private func unfoldTapped() { toggleFold() }
+
     func toggleFold() {
         guard let note = store.note(id: noteID) else { return }
         let folded = !note.isFolded
@@ -691,7 +718,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         // Text starts 5 pt below the card top when there is no file
         // block (5 + the text view's 6 pt inset = the package's 11);
         // below a file block it gets a small gap instead.
-        textTopConstraint?.constant = note.attachments.isEmpty ? -6 : 6
+        textTopConstraint?.constant = note.attachments.isEmpty ? -6 : 7
     }
 
     /// "JPEG image · 3.8 MB · dropped in from Finder" — type from the
@@ -745,7 +772,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         let metaLabel = NSTextField(labelWithString: exists ? attachmentMeta(for: attachment, url: url)
                                                             : "Original file not found")
         metaLabel.font = NSFont.systemFont(ofSize: 11)
-        metaLabel.textColor = exists ? SNTheme.secondaryText : SNTheme.tertiaryText
+        metaLabel.textColor = SNTheme.tertiaryText
         metaLabel.lineBreakMode = .byTruncatingTail
         metaLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -776,6 +803,8 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
             imageView.wantsLayer = true
             imageView.layer?.cornerRadius = 7
             imageView.layer?.masksToBounds = true
+            imageView.layer?.borderWidth = 1
+            imageView.layer?.borderColor = SNTheme.fileThumbBorder.cgColor
             imageView.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(imageView)
             NSLayoutConstraint.activate([

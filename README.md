@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.5.1-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.6.0-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,7 +24,12 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.5.1**: the
+> 🚧 **Work in progress** — SilverNotes is at **v0.6.0**: the
+> Variation A visual pass (header pill, cards, folder rows, bottom
+> bar, gear menu, formatting toolbar and Settings aligned to the
+> final mockup's exact values; the search field no longer clips
+> its "Search all notes" placeholder; notes now load expanded —
+> folding is session-only) on top of v0.5.1, the
 > bug-fix release (Standard-density lists render again, the panel
 > takes keyboard focus on open, Compact double-click expansion
 > works) on top of v0.4.0, the full

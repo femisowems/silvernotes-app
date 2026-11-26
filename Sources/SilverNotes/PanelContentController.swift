@@ -31,6 +31,19 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private let captionLabel = NSTextField(labelWithString: "")
     private var headerHeightConstraint: NSLayoutConstraint!
     private var backButtonWidthConstraint: NSLayoutConstraint!
+    /// The title's two possible leading anchors (v0.6.0, rubric §1.4):
+    /// after the back chevron when it shows, at the pill's own 12 pt
+    /// inset when it doesn't. Exactly one is active at a time;
+    /// updateHeader toggles them with the chevron's width.
+    private var titleToBackConstraint: NSLayoutConstraint!
+    private var titleToPillConstraint: NSLayoutConstraint!
+    /// The panel's 1 pt screen-facing edge line (rubric §1.2). Pinned
+    /// to the leading edge when the panel docks right (the mockup's
+    /// side), the trailing edge when it docks left; updateRoundedCorner
+    /// flips the pair.
+    private let panelEdgeBorder = NSView()
+    private var panelEdgeLeadingConstraint: NSLayoutConstraint!
+    private var panelEdgeTrailingConstraint: NSLayoutConstraint!
     private let backButton = NSButton()
     private let titleLabel = NSTextField(labelWithString: "Folders")
     private let searchField = NSSearchField()
@@ -191,7 +204,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         pillView.layer?.cornerRadius = 18
         pillView.layer?.backgroundColor = SNTheme.headerPillBackground.cgColor
         pillView.layer?.borderWidth = 1
-        pillView.layer?.borderColor = SNTheme.cardBorder.cgColor
+        pillView.layer?.borderColor = SNTheme.headerPillBorder.cgColor
         pillView.layer?.shadowColor = NSColor.black.cgColor
         pillView.layer?.shadowOpacity = 0.07
         pillView.layer?.shadowRadius = 4
@@ -289,7 +302,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         stackView.orientation = .vertical
         stackView.spacing = 10
         stackView.alignment = .leading
-        stackView.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 12, right: 12)
+        stackView.edgeInsets = NSEdgeInsets(top: 4, left: 12, bottom: 12, right: 12)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         documentView.addSubview(stackView)
 
@@ -318,22 +331,24 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         styleBarButton(gearButton, symbol: "gearshape", tip: "Settings…", action: #selector(openSettings))
         bottomBar.addSubview(gearButton)
 
-        // Hairline rule above the bottom bar, per the design package.
+        // Hairline rule above the bottom bar, per the design package
+        // (rubric §1.13: the bottom rule is a step stronger than the
+        // card-footer hairline in light mode).
         let bottomRule = NSView()
         bottomRule.wantsLayer = true
-        bottomRule.layer?.backgroundColor = SNTheme.hairline.cgColor
+        bottomRule.layer?.backgroundColor = SNTheme.panelBottomBorder.cgColor
         bottomRule.translatesAutoresizingMaskIntoConstraints = false
         column.addSubview(bottomRule)
 
         // Drop-target overlay (audit 6.10): dashed accent border +
         // centred label while files are dragged over the panel.
         dropOverlay.wantsLayer = true
-        dropOverlay.layer?.backgroundColor = SNTheme.panelBackground.cgColor
+        dropOverlay.layer?.backgroundColor = SNTheme.dropTargetBackground.cgColor
         dropOverlay.translatesAutoresizingMaskIntoConstraints = false
         dropOverlay.isHidden = true
         column.addSubview(dropOverlay)
         let dash = CAShapeLayer()
-        dash.strokeColor = SNTheme.accent.cgColor
+        dash.strokeColor = SNTheme.accentRing.cgColor
         dash.fillColor = NSColor.clear.cgColor
         dash.lineWidth = 2
         dash.lineDashPattern = [8, 5]
@@ -348,38 +363,44 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
 
         headerHeightConstraint = headerView.heightAnchor.constraint(equalToConstant: 72)
         backButtonWidthConstraint = backButton.widthAnchor.constraint(equalToConstant: 24)
+        titleToBackConstraint = titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 8)
+        titleToPillConstraint = titleLabel.leadingAnchor.constraint(equalTo: pillView.leadingAnchor, constant: 12)
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: column.topAnchor),
             headerView.leadingAnchor.constraint(equalTo: column.leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: column.trailingAnchor),
             headerHeightConstraint,
 
-            pillView.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 10),
+            pillView.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 12),
             pillView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             pillView.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
             pillView.heightAnchor.constraint(equalToConstant: 36),
 
-            captionLabel.topAnchor.constraint(equalTo: pillView.bottomAnchor, constant: 3),
-            captionLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 24),
+            captionLabel.topAnchor.constraint(equalTo: pillView.bottomAnchor, constant: 6),
+            captionLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
 
-            backButton.leadingAnchor.constraint(equalTo: pillView.leadingAnchor, constant: 6),
+            backButton.leadingAnchor.constraint(equalTo: pillView.leadingAnchor, constant: 12),
             backButton.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
             backButtonWidthConstraint,
             backButton.heightAnchor.constraint(equalToConstant: 24),
 
-            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 6),
+            titleToBackConstraint,
             titleLabel.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
 
-            searchField.leadingAnchor.constraint(equalTo: titleLabel.trailingAnchor, constant: 8),
+            // The search field flexes across the space the (hidden)
+            // title vacates — v0.6.0 fixes the clipped "Search all
+            // no…" placeholder the fixed 110 pt width caused at
+            // Standard panel width (rubric §1.4 / A8).
+            searchField.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 8),
+            searchField.trailingAnchor.constraint(equalTo: searchButton.leadingAnchor, constant: -8),
             searchField.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
-            searchField.widthAnchor.constraint(equalToConstant: 110),
 
-            newButton.trailingAnchor.constraint(equalTo: pillView.trailingAnchor, constant: -6),
+            newButton.trailingAnchor.constraint(equalTo: pillView.trailingAnchor, constant: -8),
             newButton.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
             newButton.widthAnchor.constraint(equalToConstant: 24),
             newButton.heightAnchor.constraint(equalToConstant: 24),
 
-            searchButton.trailingAnchor.constraint(equalTo: newButton.leadingAnchor, constant: -4),
+            searchButton.trailingAnchor.constraint(equalTo: newButton.leadingAnchor, constant: -8),
             searchButton.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
             searchButton.widthAnchor.constraint(equalToConstant: 24),
             searchButton.heightAnchor.constraint(equalToConstant: 24),
@@ -401,7 +422,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             bottomBar.leadingAnchor.constraint(equalTo: column.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: column.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: column.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 31),
+            bottomBar.heightAnchor.constraint(equalToConstant: 38),
 
             bottomLabel.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 14),
             bottomLabel.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
@@ -412,11 +433,11 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             compactCountLabel.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -14),
             compactCountLabel.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
 
-            overflowButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -10),
+            overflowButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -14),
             overflowButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            foldAllButton.trailingAnchor.constraint(equalTo: overflowButton.leadingAnchor, constant: -4),
+            foldAllButton.trailingAnchor.constraint(equalTo: overflowButton.leadingAnchor, constant: -6),
             foldAllButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
-            gearButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -10),
+            gearButton.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -14),
             gearButton.centerYAnchor.constraint(equalTo: bottomBar.centerYAnchor),
 
             bottomRule.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
@@ -431,6 +452,23 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             dropOverlayLabel.centerXAnchor.constraint(equalTo: dropOverlay.centerXAnchor),
             dropOverlayLabel.centerYAnchor.constraint(equalTo: dropOverlay.centerYAnchor),
         ])
+
+        // The panel's screen-facing edge line (rubric §1.2), added
+        // last so it draws over the column and the Wide rail alike.
+        // Which edge is "screen-facing" follows the dock side;
+        // updateRoundedCorner flips the active constraint.
+        panelEdgeBorder.wantsLayer = true
+        panelEdgeBorder.layer?.backgroundColor = SNTheme.panelEdgeBorder.cgColor
+        panelEdgeBorder.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(panelEdgeBorder)
+        panelEdgeLeadingConstraint = panelEdgeBorder.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        panelEdgeTrailingConstraint = panelEdgeBorder.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        NSLayoutConstraint.activate([
+            panelEdgeBorder.topAnchor.constraint(equalTo: view.topAnchor),
+            panelEdgeBorder.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            panelEdgeBorder.widthAnchor.constraint(equalToConstant: 1),
+            panelEdgeLeadingConstraint,
+        ])
     }
 
     override func viewDidLayout() {
@@ -443,9 +481,23 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         }
     }
 
-    /// Kept for PanelController's side-change calls: the panel's corners
-    /// are square now (audit 1.17), so there is nothing to refresh.
-    func updateRoundedCorner(for side: PanelSide) {}
+    /// Drives the panel edge line's side: PanelController calls this
+    /// at setup and on every side change (the panel's corners are
+    /// square now (audit 1.17), so the corner half of the original
+    /// method's job no longer exists). A right-docked panel (the
+    /// mockup's side) shows the line on its leading edge; a
+    /// left-docked panel on its trailing edge.
+    func updateRoundedCorner(for side: PanelSide) {
+        // Deactivate the outgoing edge first so the pair is never
+        // active at once, even transiently.
+        if side == .right {
+            panelEdgeTrailingConstraint?.isActive = false
+            panelEdgeLeadingConstraint?.isActive = true
+        } else {
+            panelEdgeLeadingConstraint?.isActive = false
+            panelEdgeTrailingConstraint?.isActive = true
+        }
+    }
 
     /// Header shape per presentation: the folder home drops the back
     /// chevron and the under-pill caption; note lists show both. In Wide
@@ -454,6 +506,17 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         let showBack = backVisible && !isWide
         backButton.isHidden = !showBack
         backButtonWidthConstraint?.constant = showBack ? 24 : 0
+        // Title leading follows the chevron (rubric §1.4): 8 pt after
+        // it when it shows, the pill's own 12 pt inset when it doesn't.
+        // The outgoing constraint deactivates first (same discipline
+        // as the edge-line pair in updateRoundedCorner).
+        if showBack {
+            titleToPillConstraint?.isActive = false
+            titleToBackConstraint?.isActive = true
+        } else {
+            titleToBackConstraint?.isActive = false
+            titleToPillConstraint?.isActive = true
+        }
         captionLabel.isHidden = !captionVisible
         headerHeightConstraint?.constant = captionVisible ? 72 : 56
     }
@@ -511,6 +574,13 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         if isWide, case .folders = presentation {
             presentation = .allNotes
         }
+        // Stack rhythm per presentation (rubric §1.6/§1.12): cards sit
+        // 10 pt apart with 12 pt side insets; folder-home rows sit
+        // 7 pt apart (their rendered margin) with 10 pt side insets.
+        let folderHome = presentation == .folders
+        stackView.spacing = folderHome ? 7 : 10
+        stackView.edgeInsets = NSEdgeInsets(top: 4, left: folderHome ? 10 : 12,
+                                            bottom: 12, right: folderHome ? 10 : 12)
         updateChrome()
 
         switch presentation {
@@ -520,7 +590,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             updateHeader(backVisible: false, captionVisible: false)
             titleLabel.stringValue = "Folders"
             newButton.toolTip = "New folder"
-            let allRow = UtilityRowView(symbol: "note.text", title: "All Notes",
+            let allRow = UtilityRowView(symbol: "square.grid.2x2", title: "All Notes",
                                         detail: "\(store.allNotes.count)")
             allRow.onOpen = { [weak self] in self?.openAllNotes() }
             stackView.addArrangedSubview(allRow)
@@ -618,6 +688,10 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         updateBottomBar(countText: "\(display.count) note\(display.count == 1 ? "" : "s")")
         if display.isEmpty {
             clearStack()
+            // An empty list's bottom bar carries the count + overflow
+            // only — no fold-all (rubric §2 A9/E-05). updateBottomBar
+            // ran above and showed it; hide it for this state.
+            foldAllButton.isHidden = true
             let empty: NSView
             switch emptyState {
             case .folder(let name):
@@ -696,7 +770,9 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     /// the view is inside the stack's hierarchy — activating a cross-view
     /// constraint before then logs "no common ancestor" and drops it.
     private func pinWidth(_ view: NSView) {
-        view.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -24).isActive = true
+        let insets = stackView.edgeInsets
+        view.widthAnchor.constraint(equalTo: stackView.widthAnchor,
+                                    constant: -(insets.left + insets.right)).isActive = true
     }
 
     private func card(for note: SNNote, trash: Bool = false) -> NSView {
@@ -894,7 +970,10 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         body.textColor = SNTheme.secondaryText
         body.alignment = .center
         body.lineBreakMode = .byWordWrapping
-        body.maximumNumberOfLines = 3
+        // The rubric's measure is ~24ch; the app's teaching line is
+        // longer than the mockup's copy, so it gets the lines it needs
+        // at that measure instead of truncating.
+        body.maximumNumberOfLines = 5
 
         let button = NSButton(title: "New Note", target: self, action: #selector(emptyStateNewNote))
         button.bezelStyle = .inline
@@ -910,8 +989,8 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 6
-        stack.setCustomSpacing(10, after: tile)
-        stack.setCustomSpacing(12, after: body)
+        stack.setCustomSpacing(4, after: tile)
+        stack.setCustomSpacing(8, after: body)
         stack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -921,11 +1000,11 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             glyph.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             glyph.widthAnchor.constraint(equalToConstant: 26),
             glyph.heightAnchor.constraint(equalToConstant: 26),
-            button.widthAnchor.constraint(equalToConstant: 104),
+            button.widthAnchor.constraint(equalToConstant: 94),
             button.heightAnchor.constraint(equalToConstant: 30),
             stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            body.widthAnchor.constraint(lessThanOrEqualToConstant: 210),
+            body.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
         ])
         return container
     }
@@ -1004,6 +1083,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         if case .search = presentation, searchField.isHidden == false {
             searchField.stringValue = ""
             searchField.isHidden = true
+            titleLabel.isHidden = false
         }
         presentation = isWide ? .allNotes : .folders
         reload()
@@ -1053,6 +1133,10 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
 
     @objc private func toggleSearchField() {
         searchField.isHidden.toggle()
+        // The field takes the title's place in the pill while open
+        // (v0.6.0): that is what gives it room for the full
+        // placeholder at Standard width.
+        titleLabel.isHidden = !searchField.isHidden
         if !searchField.isHidden {
             view.window?.makeFirstResponder(searchField)
         } else if case .search = presentation {
@@ -1639,11 +1723,15 @@ private final class FolderRowView: NSView {
     init(folder: SNFolder, count: Int) {
         super.init(frame: .zero)
         wantsLayer = true
-        // Rendered package: radius 10 (audit 1.12).
+        // Rendered package: radius 10 (audit 1.12), NO border — the
+        // row lifts on a single soft shadow, 0 1 3 rgba(20,22,30,0.06)
+        // (rubric §1.12; CSS blur halved into shadowRadius as usual).
         layer?.cornerRadius = 10
         layer?.backgroundColor = SNTheme.cardBackground.cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = SNTheme.cardBorder.cgColor
+        layer?.shadowColor = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1).cgColor
+        layer?.shadowOpacity = 0.06
+        layer?.shadowRadius = 1.5
+        layer?.shadowOffset = NSSize(width: 0, height: -1)
 
         // Plain rows, no folder colours (design package): an accent-soft
         // tile with a folder glyph carries the row instead.
@@ -1676,8 +1764,8 @@ private final class FolderRowView: NSView {
         countLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let chevron = NSTextField(labelWithString: "›")
-        chevron.font = NSFont.systemFont(ofSize: 16)
-        chevron.textColor = SNTheme.secondaryText
+        chevron.font = NSFont.systemFont(ofSize: 14)
+        chevron.textColor = SNTheme.rowChevron
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
         // Tile + optional pin + name in a stack, so a hidden pin
@@ -1685,12 +1773,12 @@ private final class FolderRowView: NSView {
         let leftStack = NSStackView(views: [tile, pin, name])
         leftStack.orientation = .horizontal
         leftStack.alignment = .centerY
-        leftStack.spacing = 8
+        leftStack.spacing = 10
         leftStack.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(leftStack); addSubview(countLabel); addSubview(chevron)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 44),
+            heightAnchor.constraint(equalToConstant: 50),
             tile.widthAnchor.constraint(equalToConstant: 30),
             tile.heightAnchor.constraint(equalToConstant: 30),
             glyph.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
@@ -1699,12 +1787,12 @@ private final class FolderRowView: NSView {
             glyph.heightAnchor.constraint(equalToConstant: 16),
             pin.widthAnchor.constraint(equalToConstant: 10),
             pin.heightAnchor.constraint(equalToConstant: 10),
-            leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             leftStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             leftStack.trailingAnchor.constraint(lessThanOrEqualTo: countLabel.leadingAnchor, constant: -8),
-            countLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -6),
+            countLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -10),
             countLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 
@@ -1741,8 +1829,12 @@ private final class UtilityRowView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 10
         layer?.backgroundColor = SNTheme.cardBackground.cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = SNTheme.cardBorder.cgColor
+        // Same no-border + soft-shadow treatment as FolderRowView
+        // (rubric §1.12).
+        layer?.shadowColor = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1).cgColor
+        layer?.shadowOpacity = 0.06
+        layer?.shadowRadius = 1.5
+        layer?.shadowOffset = NSSize(width: 0, height: -1)
 
         let tile = NSView()
         tile.wantsLayer = true
@@ -1765,14 +1857,14 @@ private final class UtilityRowView: NSView {
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let chevron = NSTextField(labelWithString: "›")
-        chevron.font = NSFont.systemFont(ofSize: 16)
-        chevron.textColor = SNTheme.secondaryText
+        chevron.font = NSFont.systemFont(ofSize: 14)
+        chevron.textColor = SNTheme.rowChevron
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(tile); addSubview(name); addSubview(detailLabel); addSubview(chevron)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 44),
-            tile.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            heightAnchor.constraint(equalToConstant: 50),
+            tile.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             tile.centerYAnchor.constraint(equalTo: centerYAnchor),
             tile.widthAnchor.constraint(equalToConstant: 30),
             tile.heightAnchor.constraint(equalToConstant: 30),
@@ -1780,11 +1872,11 @@ private final class UtilityRowView: NSView {
             glyph.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             glyph.widthAnchor.constraint(equalToConstant: 16),
             glyph.heightAnchor.constraint(equalToConstant: 16),
-            name.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: 8),
+            name.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: 10),
             name.centerYAnchor.constraint(equalTo: centerYAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -6),
+            detailLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -10),
             detailLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 

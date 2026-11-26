@@ -1,10 +1,10 @@
 #!/bin/bash
-# SilverNotes v0.5.1 — build a release binary and wrap it in a SilverNotes.app bundle.
-# v0.5.1 is the Nov 26 bug-fix release: Standard-density note lists
-# render again (card population rebuilt deterministically), the panel
-# becomes the key window on open so keyboard handling works from the
-# first open, Compact double-click expansion is fixed, and an
-# uncaught-exception logger is added.
+# SilverNotes v0.6.0 — build a release binary and wrap it in a SilverNotes.app bundle.
+# v0.6.0 is the Nov 26 Variation A visual pass: styling aligned to
+# the final mockup's rubric (header pill anatomy + the search-field
+# placeholder fix, card footer block, folder rows, Settings sidebar,
+# solid highlight band, link/selection colours), plus notes loading
+# expanded (folded state is session-only from this release).
 # Run on a Mac from inside the silvernotes-app folder:  ./build-app.sh
 # Result: dist/SilverNotes.app  (drag it into /Applications)
 set -euo pipefail
@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="SilverNotes"
 BUNDLE_ID="io.starterdev.silvernotes"
-VERSION="0.5.1"
+VERSION="0.6.0"
 MIN_MACOS="13.0"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"

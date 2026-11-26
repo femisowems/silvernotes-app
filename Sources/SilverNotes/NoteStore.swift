@@ -80,6 +80,15 @@ final class NoteStore {
             seedIfNeeded()
             changed = true
         }
+        // Notes default to expanded (v0.6.0): folded state is
+        // session-only, so a load — which is to say, an app launch —
+        // unfolds every note. Folding still works exactly as before
+        // within the session (gear menu, footer double-click,
+        // fold-all); it just no longer survives a relaunch.
+        for i in data.notes.indices where data.notes[i].isFolded {
+            data.notes[i].isFolded = false
+            changed = true
+        }
         let noteCountBeforePurge = data.notes.count
         purgeExpiredTrash()
         if data.notes.count != noteCountBeforePurge { changed = true }

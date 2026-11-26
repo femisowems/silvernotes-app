@@ -267,8 +267,10 @@ enum MarkdownEngine {
             // Link: [text](url)
             if ch == 0x5B { // [
                 if let parsed = parseLink(ns, at: i, to: end) {
+                    // The package draws links in the link colour with
+                    // NO underline (rubric §1.5) — colour + the link
+                    // attribute only.
                     attr.addAttributes([.foregroundColor: SNTheme.link,
-                                        .underlineStyle: NSUnderlineStyle.single.rawValue,
                                         .link: parsed.url], range: parsed.textRange)
                     conceal(attr, range: NSRange(location: i, length: 1), showMarkup: showMarkup)
                     conceal(attr, range: NSRange(location: parsed.textRange.location + parsed.textRange.length,

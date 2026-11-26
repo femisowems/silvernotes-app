@@ -53,6 +53,73 @@ enum SNTheme {
                 dark: NSColor(calibratedWhite: 1, alpha: 0.10))
     }
 
+    /// The panel bottom bar's top rule (v0.6.0 rubric §1.13): a touch
+    /// stronger than the card-footer hairline in light mode —
+    /// rgba(120,120,135,0.20); dark matches the hairline's white 0.10.
+    static var panelBottomBorder: NSColor {
+        dynamic(light: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.20),
+                dark: NSColor(calibratedWhite: 1, alpha: 0.10))
+    }
+
+    /// The header pill's 1 pt border (rubric §1.4): rgba(60,60,70,0.10)
+    /// light, rgba(255,255,255,0.09) dark — distinct from cardBorder.
+    static var headerPillBorder: NSColor {
+        dynamic(light: NSColor(srgbRed: 60/255, green: 60/255, blue: 70/255, alpha: 0.10),
+                dark: NSColor(calibratedWhite: 1, alpha: 0.09))
+    }
+
+    /// The panel's screen-facing edge line (rubric §1.2):
+    /// rgba(60,60,70,0.18) light, rgba(255,255,255,0.12) dark.
+    static var panelEdgeBorder: NSColor {
+        dynamic(light: NSColor(srgbRed: 60/255, green: 60/255, blue: 70/255, alpha: 0.18),
+                dark: NSColor(calibratedWhite: 1, alpha: 0.12))
+    }
+
+    /// Text selection wash inside a note (rubric §1.5):
+    /// rgba(63,110,165,0.32) in both appearances.
+    static var selectionBackground: NSColor { hex(0x3F6EA5, alpha: 0.32) }
+
+    /// File-card thumbnail border (rubric §1.9): rgba(60,60,70,0.12);
+    /// the package gives no dark override.
+    static var fileThumbBorder: NSColor {
+        NSColor(srgbRed: 60/255, green: 60/255, blue: 70/255, alpha: 0.12)
+    }
+
+    /// Gear-menu swatch border (rubric §1.10): rgba(60,60,70,0.15);
+    /// no dark override in the package.
+    static var swatchBorder: NSColor {
+        NSColor(srgbRed: 60/255, green: 60/255, blue: 70/255, alpha: 0.15)
+    }
+
+    /// Folder-row chevron (rubric §1.12): #B9B9C2, no dark override.
+    static var rowChevron: NSColor { hex(0xB9B9C2) }
+
+    /// Drop-target overlay fill (rubric §2 A14): rgba(255,255,255,0.6)
+    /// light; dark is unspecified in the package, so the dark card
+    /// surface at the same alpha stands in.
+    static var dropTargetBackground: NSColor {
+        dynamic(light: NSColor(calibratedWhite: 1, alpha: 0.6),
+                dark: hex(0x2E2E33, alpha: 0.6))
+    }
+
+    /// Settings window surfaces (rubric §1.16). The package renders
+    /// Settings in light only; the dark values are the nearest neutral
+    /// steps, unverifiable against the package.
+    static var settingsWindowBackground: NSColor {
+        dynamic(light: hex(0xF5F5F7),
+                dark: hex(0x1E1E21))
+    }
+
+    static var settingsSidebarBackground: NSColor {
+        dynamic(light: hex(0xECECF1),
+                dark: hex(0x2C2C31))
+    }
+
+    static var settingsSidebarBorder: NSColor {
+        dynamic(light: hex(0xDDDDE3),
+                dark: NSColor(calibratedWhite: 1, alpha: 0.10))
+    }
+
     /// The floating header pill's surface.
     static var headerPillBackground: NSColor {
         dynamic(light: hex(0xFFFFFF, alpha: 0.85),

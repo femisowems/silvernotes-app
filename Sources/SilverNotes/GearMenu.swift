@@ -79,6 +79,14 @@ final class GearMenu: NSObject {
             item.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         func separator() {
+            // The package's separator carries its 5 pt margin on both
+            // sides (rubric §1.11). NSStackView only sets custom
+            // spacing AFTER a view, so the top margin is applied to
+            // the preceding row here; the bottom one is set after the
+            // line itself, below.
+            if let previous = stack.arrangedSubviews.last {
+                stack.setCustomSpacing(5, after: previous)
+            }
             let line = NSView()
             line.wantsLayer = true
             line.layer?.backgroundColor = SNTheme.gearMenuSeparator.cgColor
@@ -203,7 +211,7 @@ final class GearMenu: NSObject {
             button.layer?.cornerRadius = 9.5
             button.layer?.backgroundColor = SNTheme.swatch(for: token).cgColor
             button.layer?.borderWidth = 1
-            button.layer?.borderColor = SNTheme.cardBorder.cgColor
+            button.layer?.borderColor = SNTheme.swatchBorder.cgColor
             button.toolTip = token.displayName
             button.target = self
             button.action = #selector(swatchClicked(_:))
@@ -219,7 +227,7 @@ final class GearMenu: NSObject {
                 ring.layer?.borderColor = SNTheme.accent.cgColor
                 rowView.addSubview(ring)
             }
-            x += 19 + 5
+            x += 19 + 6
         }
         rowView.heightAnchor.constraint(equalToConstant: 27).isActive = true
         return rowView

@@ -5,8 +5,10 @@ import AppKit
 /// — the source string and every offset in it stay exactly as typed:
 ///
 /// - Highlight bands (audit 2.13): ::highlight:: ranges are drawn as a
-///   marker band — a soft-edged gradient covering 55%→96% of the line
-///   height — instead of a full-line-height background wash.
+///   marker band — a SOLID band with hard stops covering 55%→96% of
+///   the line height, 1 pt of horizontal padding, 2 pt corners
+///   (rubric §1.5; v0.6.0 replaced the earlier soft gradient, which
+///   the mockup does not draw) — instead of a full-line-height wash.
 /// - Checklist ticks (audit 4.19): each task's checkbox character (made
 ///   invisible by the render) gets a drawn 15×15 circle over its cell:
 ///   a 1.5 pt #B9B9C2 ring when open, a #34C759 fill with a white check
@@ -25,7 +27,6 @@ final class SNLayoutManager: NSLayoutManager {
 
         // MARK: Highlight marker bands
         let highlight = SNTheme.highlightBackground
-        let clearHighlight = highlight.withAlphaComponent(0)
         for range in highlightRanges {
             let intersection = NSIntersectionRange(range, charsToShow)
             guard intersection.length > 0 else { continue }
@@ -34,12 +35,15 @@ final class SNLayoutManager: NSLayoutManager {
                 let overlap = NSIntersectionRange(fragmentGlyphs, glyphRange)
                 guard overlap.length > 0 else { return }
                 let bounds = self.boundingRect(forGlyphRange: overlap, in: container)
-                let band = NSRect(x: bounds.minX + origin.x,
+                // Solid band, hard stops (rubric §1.5): the mockup's
+                // marker is a flat fill from 55% to 96% of the line
+                // height, widened 1 pt each side, corners at 2 pt.
+                let band = NSRect(x: bounds.minX + origin.x - 1,
                                   y: rect.minY + origin.y + rect.height * 0.55,
-                                  width: bounds.width,
+                                  width: bounds.width + 2,
                                   height: rect.height * 0.41)
-                let gradient = NSGradient(colors: [clearHighlight, highlight, clearHighlight])
-                gradient?.draw(in: band, angle: -90)
+                highlight.setFill()
+                NSBezierPath(roundedRect: band, xRadius: 2, yRadius: 2).fill()
             }
         }
 

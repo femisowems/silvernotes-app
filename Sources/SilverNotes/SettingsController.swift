@@ -69,12 +69,16 @@ final class SettingsController: NSObject, NSWindowDelegate {
 
     private func buildWindow() {
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 430))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = SNTheme.settingsWindowBackground.cgColor
 
         // Sidebar: five rows, the selected one on the accent (the
-        // package's .srow.sel).
-        let sidebar = NSView(frame: NSRect(x: 0, y: 0, width: 170, height: 430))
+        // package's .srow.sel). Width is the package's 38% of the
+        // window (rubric §1.16); its surface and right border are the
+        // package's #ECECF1 / #DDDDE3.
+        let sidebar = NSView(frame: NSRect(x: 0, y: 0, width: 236, height: 430))
         sidebar.wantsLayer = true
-        sidebar.layer?.backgroundColor = SNTheme.headerPillBackground.cgColor
+        sidebar.layer?.backgroundColor = SNTheme.settingsSidebarBackground.cgColor
         content.addSubview(sidebar)
         let paneSpecs: [(String, String)] = [
             ("gearshape", "General"),
@@ -93,20 +97,20 @@ final class SettingsController: NSObject, NSWindowDelegate {
             button.isBordered = false
             button.alignment = .left
             button.imagePosition = .imageLeading
-            button.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            button.font = NSFont.systemFont(ofSize: 12, weight: .medium)
             button.wantsLayer = true
             button.layer?.cornerRadius = 6
-            button.frame = NSRect(x: 10, y: 430 - 52 - index * 34, width: 150, height: 28)
+            button.frame = NSRect(x: 8, y: 430 - 34 - 26 - index * 26, width: 220, height: 26)
             sidebar.addSubview(button)
             sidebarButtons.append(button)
         }
-        let sidebarBorder = NSView(frame: NSRect(x: 169, y: 0, width: 1, height: 430))
+        let sidebarBorder = NSView(frame: NSRect(x: 235, y: 0, width: 1, height: 430))
         sidebarBorder.wantsLayer = true
-        sidebarBorder.layer?.backgroundColor = SNTheme.hairline.cgColor
+        sidebarBorder.layer?.backgroundColor = SNTheme.settingsSidebarBorder.cgColor
         content.addSubview(sidebarBorder)
 
         // Panes — ALL built before any refresh runs (see header note).
-        let paneFrame = NSRect(x: 170, y: 0, width: 450, height: 430)
+        let paneFrame = NSRect(x: 236, y: 0, width: 384, height: 430)
         paneViews = [buildGeneralPane(frame: paneFrame),
                      buildAppearancePane(frame: paneFrame),
                      buildEditorPane(frame: paneFrame),
@@ -156,14 +160,15 @@ final class SettingsController: NSObject, NSWindowDelegate {
         let field = NSTextField(labelWithString: text)
         field.font = bold ? NSFont.systemFont(ofSize: size, weight: .semibold) : NSFont.systemFont(ofSize: size)
         field.textColor = SNTheme.primaryText
-        field.frame = NSRect(x: 24, y: y, width: 402, height: 18)
+        field.frame = NSRect(x: 14, y: y, width: 336, height: 18)
         pane.addSubview(field)
         return field
     }
 
     private func paneCheckbox(_ title: String, in pane: NSView, y: CGFloat, action: Selector) -> NSButton {
         let button = NSButton(checkboxWithTitle: title, target: self, action: action)
-        button.frame = NSRect(x: 24, y: y, width: 402, height: 20)
+        button.font = NSFont.systemFont(ofSize: 12)
+        button.frame = NSRect(x: 14, y: y, width: 336, height: 20)
         pane.addSubview(button)
         return button
     }
@@ -172,7 +177,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         let field = NSTextField(labelWithString: text)
         field.font = NSFont.systemFont(ofSize: 14, weight: .bold)
         field.textColor = SNTheme.primaryText
-        field.frame = NSRect(x: 24, y: 392, width: 402, height: 20)
+        field.frame = NSRect(x: 14, y: 392, width: 336, height: 20)
         pane.addSubview(field)
     }
 
@@ -185,13 +190,15 @@ final class SettingsController: NSObject, NSWindowDelegate {
         statusLabel = NSTextField(labelWithString: "")
         statusLabel.font = NSFont.systemFont(ofSize: 12)
         statusLabel.textColor = SNTheme.secondaryText
-        statusLabel.frame = NSRect(x: 24, y: 330, width: 402, height: 18)
+        statusLabel.frame = NSRect(x: 14, y: 330, width: 336, height: 18)
         pane.addSubview(statusLabel)
 
         launchAtLoginCheckbox = paneCheckbox("Launch at login (starts hidden, panel closed)",
                                              in: pane, y: 354, action: #selector(launchAtLoginChanged(_:)))
 
-        let hotSide = paneCheckbox("Hot Side — open the panel by holding the pointer at the screen edge",
+        // Title shortened in v0.6.0 so it fits the narrower pane the
+        // package's 38% sidebar leaves — same meaning, fewer words.
+        let hotSide = paneCheckbox("Hot Side — hold the pointer at the screen edge to open",
                                    in: pane, y: 302, action: #selector(hotSideChanged(_:)))
         hotSide.state = Preferences.hotSideEnabled ? .on : .off
 
@@ -200,7 +207,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
                                              target: self, action: #selector(sideChanged(_:)))
         let mainScreen = NSScreen.main ?? NSScreen.screens[0]
         sideControl.selectedSegment = Preferences.effectivePanelSide(for: mainScreen) == .right ? 1 : 0
-        sideControl.frame = NSRect(x: 24, y: 244, width: 160, height: 24)
+        sideControl.frame = NSRect(x: 14, y: 244, width: 160, height: 24)
         pane.addSubview(sideControl)
 
         let pin = paneCheckbox("Pin panel open (disables click-outside hide)",
@@ -211,7 +218,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         let widthControl = NSSegmentedControl(labels: ["Standard", "Wide"], trackingMode: .selectOne,
                                               target: self, action: #selector(widthChanged(_:)))
         widthControl.selectedSegment = Preferences.panelWidth == .wide ? 1 : 0
-        widthControl.frame = NSRect(x: 24, y: 152, width: 160, height: 24)
+        widthControl.frame = NSRect(x: 14, y: 152, width: 160, height: 24)
         pane.addSubview(widthControl)
 
         // The update row moved up in v0.5.0 to close the gap left by a
@@ -220,19 +227,19 @@ final class SettingsController: NSObject, NSWindowDelegate {
         updateButton = NSButton(title: "Check for Updates…", target: self,
                                 action: #selector(updateButtonClicked))
         updateButton.bezelStyle = .rounded
-        updateButton.frame = NSRect(x: 24, y: 102, width: 168, height: 24)
+        updateButton.frame = NSRect(x: 14, y: 102, width: 168, height: 24)
         pane.addSubview(updateButton)
 
         updateStatusLabel = NSTextField(labelWithString: "")
         updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
         updateStatusLabel.textColor = SNTheme.secondaryText
-        updateStatusLabel.frame = NSRect(x: 200, y: 105, width: 226, height: 18)
+        updateStatusLabel.frame = NSRect(x: 190, y: 105, width: 180, height: 18)
         pane.addSubview(updateStatusLabel)
 
-        let version = NSTextField(labelWithString: "SilverNotes v0.5.1")
+        let version = NSTextField(labelWithString: "SilverNotes v0.6.0")
         version.font = NSFont.systemFont(ofSize: 11)
         version.textColor = SNTheme.secondaryText
-        version.frame = NSRect(x: 24, y: 16, width: 402, height: 16)
+        version.frame = NSRect(x: 14, y: 16, width: 336, height: 16)
         pane.addSubview(version)
         return pane
     }
@@ -245,25 +252,27 @@ final class SettingsController: NSObject, NSWindowDelegate {
         let colorControl = NSSegmentedControl(labels: ["Full card", "Left bar"], trackingMode: .selectOne,
                                               target: self, action: #selector(colorStyleChanged(_:)))
         colorControl.selectedSegment = Preferences.colorStyle == .leftBar ? 1 : 0
-        colorControl.frame = NSRect(x: 24, y: 326, width: 200, height: 24)
+        colorControl.frame = NSRect(x: 14, y: 326, width: 200, height: 24)
         pane.addSubview(colorControl)
-        let colorNote = paneLabel("Full card tints the whole note; Left bar keeps the card plain and draws the colour as a strip on its left edge.", in: pane, y: 288)
+        // Note copy shortened in v0.6.0 to fit the narrower pane at
+        // two lines (same information, fewer words).
+        let colorNote = paneLabel("Full card tints the whole note; Left bar draws the colour as a strip on the card's left edge.", in: pane, y: 288)
         colorNote.textColor = SNTheme.secondaryText
         colorNote.maximumNumberOfLines = 2
         colorNote.lineBreakMode = .byWordWrapping
-        colorNote.frame = NSRect(x: 24, y: 282, width: 402, height: 32)
+        colorNote.frame = NSRect(x: 14, y: 282, width: 336, height: 32)
 
         _ = paneLabel("Panel density:", in: pane, y: 238)
         let densityControl = NSSegmentedControl(labels: ["Standard", "Compact"], trackingMode: .selectOne,
                                                 target: self, action: #selector(densityChanged(_:)))
         densityControl.selectedSegment = Preferences.density == .compact ? 1 : 0
-        densityControl.frame = NSRect(x: 24, y: 210, width: 200, height: 24)
+        densityControl.frame = NSRect(x: 14, y: 210, width: 200, height: 24)
         pane.addSubview(densityControl)
-        let densityNote = paneLabel("Compact turns note lists into one-line rows with a capture field and keyboard hints — a triage view at the same panel width.", in: pane, y: 162)
+        let densityNote = paneLabel("Compact turns note lists into one-line rows with a capture field and keyboard hints — a triage view.", in: pane, y: 162)
         densityNote.textColor = SNTheme.secondaryText
         densityNote.maximumNumberOfLines = 2
         densityNote.lineBreakMode = .byWordWrapping
-        densityNote.frame = NSRect(x: 24, y: 156, width: 402, height: 32)
+        densityNote.frame = NSRect(x: 14, y: 156, width: 336, height: 32)
         return pane
     }
 
@@ -283,12 +292,12 @@ final class SettingsController: NSObject, NSWindowDelegate {
         fontSizeStepper.doubleValue = Preferences.bodyFontSize
         fontSizeStepper.target = self
         fontSizeStepper.action = #selector(fontSizeChanged(_:))
-        fontSizeStepper.frame = NSRect(x: 24, y: 288, width: 20, height: 24)
+        fontSizeStepper.frame = NSRect(x: 14, y: 288, width: 20, height: 24)
         pane.addSubview(fontSizeStepper)
         fontSizeLabel = NSTextField(labelWithString: "")
         fontSizeLabel.font = NSFont.systemFont(ofSize: 12)
         fontSizeLabel.textColor = SNTheme.primaryText
-        fontSizeLabel.frame = NSRect(x: 52, y: 290, width: 200, height: 18)
+        fontSizeLabel.frame = NSRect(x: 42, y: 290, width: 200, height: 18)
         pane.addSubview(fontSizeLabel)
         let note = paneLabel("Also adjustable in the panel with ⌘+ and ⌘−.", in: pane, y: 262)
         note.textColor = SNTheme.secondaryText
@@ -303,17 +312,17 @@ final class SettingsController: NSObject, NSWindowDelegate {
         backupsCountLabel = NSTextField(labelWithString: "")
         backupsCountLabel.font = NSFont.systemFont(ofSize: 12)
         backupsCountLabel.textColor = SNTheme.primaryText
-        backupsCountLabel.frame = NSRect(x: 24, y: 322, width: 402, height: 18)
+        backupsCountLabel.frame = NSRect(x: 14, y: 322, width: 336, height: 18)
         pane.addSubview(backupsCountLabel)
         backupsRecentLabel = NSTextField(labelWithString: "")
         backupsRecentLabel.font = NSFont.systemFont(ofSize: 12)
         backupsRecentLabel.textColor = SNTheme.primaryText
-        backupsRecentLabel.frame = NSRect(x: 24, y: 298, width: 402, height: 18)
+        backupsRecentLabel.frame = NSRect(x: 14, y: 298, width: 336, height: 18)
         pane.addSubview(backupsRecentLabel)
 
         let openButton = NSButton(title: "Open Backups Folder", target: self, action: #selector(openBackupsFolder))
         openButton.bezelStyle = .rounded
-        openButton.frame = NSRect(x: 24, y: 258, width: 180, height: 24)
+        openButton.frame = NSRect(x: 14, y: 258, width: 180, height: 24)
         pane.addSubview(openButton)
         return pane
     }
@@ -346,7 +355,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         field.textColor = SNTheme.primaryText
         field.maximumNumberOfLines = 0
         field.lineBreakMode = .byWordWrapping
-        field.frame = NSRect(x: 24, y: 36, width: 402, height: 348)
+        field.frame = NSRect(x: 14, y: 36, width: 336, height: 348)
         pane.addSubview(field)
         return pane
     }

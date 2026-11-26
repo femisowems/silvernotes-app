@@ -141,6 +141,29 @@ final class NoteStoreTests: XCTestCase {
                        "seed content is not the user creating a note")
     }
 
+    // MARK: Fold state (v0.6.0: notes load expanded)
+
+    /// Folded state is session-only: a note folded in one run must
+    /// come back expanded after a reload, and the reset must be
+    /// persisted so the on-disk document agrees.
+    func testNotesLoadExpandedByDefault() throws {
+        let a = store.createFolder(name: "A")
+        let note = store.createNote(in: a.id, body: "fold me")
+        store.setNoteFolded(id: note.id, folded: true)
+        XCTAssertEqual(store.note(id: note.id)?.isFolded, true,
+                       "folding must still work within the session")
+
+        let reloaded = NoteStore(baseDirectory: baseDirectory)
+        reloaded.load()
+
+        XCTAssertEqual(reloaded.note(id: note.id)?.isFolded, false,
+                       "a note folded last session must load expanded")
+        let raw = try Data(contentsOf: store.storeFileURL)
+        let onDisk = try JSONDecoder.storeDecoder.decode(StoreData.self, from: raw)
+        XCTAssertEqual(onDisk.notes.first { $0.id == note.id }?.isFolded, false,
+                       "the load-time reset must be written back to disk")
+    }
+
     // MARK: Persistence
 
     func testPersistenceRoundTrip() {

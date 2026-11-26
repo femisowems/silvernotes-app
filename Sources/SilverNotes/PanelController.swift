@@ -107,7 +107,11 @@ final class PanelController: NSObject {
         sliver.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         sliver.isOpaque = false
         sliver.backgroundColor = .clear
-        sliver.hasShadow = false
+        // The package gives the Open Bar a soft shadow (−6/18,
+        // rgba(15,20,35,0.2), rubric §1.14); a window shadow follows
+        // the sliver view's alpha shape, which is the closest native
+        // equivalent — capture-verify.
+        sliver.hasShadow = true
         let view = SliverView()
         view.onClick = { [weak self] in self?.show() }
         sliver.contentView = view
