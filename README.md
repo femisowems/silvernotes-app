@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.1.1-e4572e" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.2.0-e4572e" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,11 +24,13 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.1.1**, a performance
-> pass over the v0.1.0 MVP. The MVP is **confirmed working** on a real
+> 🚧 **Work in progress** — SilverNotes is at **v0.2.0**, a
+> mockup-fidelity visual pass over the v0.1.1 build: the panel, cards
+> and chrome now follow the approved design package's tokens, type
+> scale and anatomy. The MVP is **confirmed working** on a real
 > Mac (MacBook Air, macOS 26) as of November 25, 2026 — with a few
 > first-use bugs, which are tracked in [ROADMAP.md](ROADMAP.md).
-> v0.1.1 itself is CI-built and awaiting its on-device confirmation
+> v0.2.0 itself is CI-built and awaiting its on-device confirmation
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
 > Nothing below claims a feature "works" beyond what the code does;
@@ -346,6 +348,23 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.2.0 (November 25, 2026) — mockup-fidelity visual pass,
+  CI-built, not yet confirmed on a Mac.** Presentation only — no
+  behaviour, data or feature changes. The token layer now carries the
+  design package's exact values (panel #EDEEF1 at 88% over the blur,
+  dark #222226 at 90%; steel accent #3F6EA5; marker highlight; note
+  colours as full card backgrounds with dedicated dark variants), the
+  type scale matches the spec (13pt body at 1.5 line height, the
+  first line of each note as a 13.5pt semibold title, footers at
+  10.5–11pt, code at 12pt), the header is the mockup's pill with the
+  "Local only — sync arrives in V1.1" caption, card footers follow
+  the spec order with hover states and a gold pinned pin, the gear
+  menu matches the mockup (swatch row, mode checks), folder rows are
+  plain with counts, the empty state teaches the three capture
+  paths, the edge sliver is the 22×118pt Open Bar, and the panel
+  slides on the spec's 280ms curve with a Reduce Motion crossfade.
+  The confirmation checklist in [ROADMAP.md](ROADMAP.md) carries the
+  v0.2.0 checks.
 - **v0.1.1 (November 25, 2026) — performance pass, CI-built, not yet
   confirmed on a Mac.** No new features and no behaviour changes by
   design: the card stack is diffed by note ID (a structural change no
