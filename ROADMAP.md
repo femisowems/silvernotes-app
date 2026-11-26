@@ -148,6 +148,32 @@ as the regression set to re-run whenever the editor or store changes.
 37. Open the panel with ⌃⌥⌘Space and, without clicking anything, press Esc → the panel closes. In Compact density, ↑/↓ move the row selection and ⏎ opens the selected row — again without clicking first.
 38. Compact density → double-click a row → it expands into its full card.
 
+**Recording evidence (Nov 26, 2026 — Loom Video Review reviews 2 & 3,
+recorded on v0.5.0).** The two recordings settle these points as
+frame-evidenced behaviour of the v0.5.0 build:
+- Check 3 (partial): the sliver sits at the docked edge and clicking
+  through slides the panel in — seen in both recordings. (The
+  second-launch-starts-hidden half is not shown.)
+- Check 20: PASS — the empty-folder state ("Nothing in Testing...
+  yet", the capture-paths line, accent New Note button) and the folder
+  home (counts at the right, Trash "2 · kept 30 days").
+- Check 24 (first half): PASS — All Notes and Pinned rows sit at the
+  top of the folder home with live counts and open their views.
+- Check 31: PASS by eye — Compact renders at the same panel width as
+  Standard in the frames (not measured with a ruler).
+- Checks 36/38 (substance): FAIL on v0.5.0 — Standard lists blank
+  (review 2's two blockers) and Compact double-click never expands
+  (review 3). These recordings are the "before" half of the
+  before/after comparison; the checks themselves stay open until the
+  guided capture on v0.5.1.
+- Folder creation end-to-end (dialog → type → Create → row appears)
+  works — review 2, 0:16–0:21.
+- Two review-3 findings are recording misreads, verified against the
+  store file: the folder is literally named "Testing..." (not a
+  truncation), and the "Pinned view never appears" item was a hover
+  followed by an All Notes click. The truncated search placeholder
+  ("Search all no") is real and goes to the v0.6.0 visual pass.
+
 ## Shipped log
 
 - **v0.5.1** (Nov 26, 2026) — targeted bug-fix release, from the Nov 26 on-device diagnosis. (1) **Standard-density note lists render again:** on a real install, All Notes / folder / Trash lists came up empty while the store counts stayed correct and Compact lists rendered fine — the diffed card population (v0.1.1) aborted silently partway, and the bottom bar kept the previous view's stale text because the count was applied only after population. `updateCardStack` is now a deterministic rebuild (clear the stack, add one freshly built card per note, pin its width — the pattern the folder home and Compact rows already used), the diff state (`cardViews` / `cardNotes` / `lastMarkupSetting`) is gone, and `showNotes` + the Trash branch apply the bottom-bar count BEFORE populating. (2) **The panel becomes the key window on open:** `show()` ordered the panel front without ever making it key, and the panel-local key handler guards on `isKeyWindow` — so ALL panel keyboard handling (Esc, Compact ↑/↓/⏎, ⌥⌘ shortcuts) was dead on open until something else made the panel key. The panel's three `orderFront` sites in the show path are now `makeKeyAndOrderFront`. (3) **Compact double-click expansion fixed:** selecting a row used to reload(), rebuilding every row — the clicked row was destroyed between the two clicks of a double-click, so expansion never fired. Selection now restyles the live rows in place (`CompactRowView.setSelected` + a row map); keyboard ↑/↓ selection uses the same in-place path. (4) **Uncaught-exception logger:** launch installs an `NSSetUncaughtExceptionHandler` that writes the exception's name, reason, call stack and a timestamp to `~/Library/Application Support/SilverNotes/last-exception.log`; it does not alter exception behaviour. *Status: on-device confirmation pending (checks 36–38 above).*
