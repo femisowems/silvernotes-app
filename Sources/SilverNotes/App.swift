@@ -21,9 +21,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Preferences.registerDefaults()
         NoteStore.shared.load()
         PanelController.shared.setUp()
+        // Arm the launch splash only after setUp() has run — it rides
+        // along with the panel's first presentation and must never
+        // precede or delay the setUp path.
+        LaunchSplash.shared.arm()
         buildMainMenu()
         buildStatusItem()
         print("SilverNotes: launched (status item + sliver ready)")
+        // One silent update check shortly after launch: it only records
+        // whether a newer release exists, so the status menu can say so.
+        // Nothing downloads or installs without a click in Settings.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            UpdateChecker.shared.check { _ in }
+        }
         // First launch ever: show the panel once so the user sees the app
         // exists. An accessory app that launches fully hidden reads as
         // "nothing happens" — this is the onboarding moment.
@@ -154,6 +164,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                   action: #selector(menuFlipSide), keyEquivalent: "")
         menu.addItem(sideItem)
         menu.addItem(.separator())
+        // The menu is rebuilt on every right-click, so this title can
+        // reflect the launch check's finding.
+        let updateTitle = UpdateChecker.shared.availableUpdate.map {
+            "Check for Updates… (v\($0.version) available)"
+        } ?? "Check for Updates…"
+        menu.addItem(NSMenuItem(title: updateTitle, action: #selector(menuCheckForUpdates), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Settings…", action: #selector(menuSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem(title: "About SilverNotes", action: #selector(menuAbout), keyEquivalent: ""))
         menu.addItem(.separator())
@@ -168,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func menuToggle() { PanelController.shared.toggle() }
     @objc private func menuNewNote() { PanelController.shared.createNoteShortcut() }
     @objc private func menuSettings() { SettingsController.shared.show() }
+    @objc private func menuCheckForUpdates() { SettingsController.shared.showAndCheckForUpdates() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
     @objc private func menuAbout() { NSApp.orderFrontStandardAboutPanel(nil) }
     @objc private func menuHotSide() {

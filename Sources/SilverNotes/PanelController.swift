@@ -161,6 +161,10 @@ final class PanelController: NSObject {
 
     func show() {
         ensureSetUp()
+        // Launch-splash bookkeeping only: it never gates, delays, or
+        // alters the show — the splash is a separate window that fades
+        // on its own schedule.
+        LaunchSplash.shared.panelPresented()
         if isPanelVisible && panelIsOnScreen { return }
         print("SilverNotes: show() — panel sliding in")
         previousApp = NSWorkspace.shared.frontmostApplication
