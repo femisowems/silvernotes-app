@@ -84,8 +84,17 @@ final class FormattingToolbar: NSPanel {
                 origin.y = screenRect.minY - frame.height - 6
             }
         }
-        setFrameOrigin(origin)
+        // Appear with a 120 ms fade + 2 pt rise (audit 5.4).
+        let targetOrigin = origin
+        setFrameOrigin(NSPoint(x: targetOrigin.x, y: targetOrigin.y - 2))
+        alphaValue = 0
         orderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+            animator().setFrameOrigin(targetOrigin)
+        }
     }
 
     func hide() {

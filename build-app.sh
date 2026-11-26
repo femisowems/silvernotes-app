@@ -1,5 +1,9 @@
 #!/bin/bash
-# SilverNotes v0.3.0 — build a release binary and wrap it in a SilverNotes.app bundle.
+# SilverNotes v0.4.0 — build a release binary and wrap it in a SilverNotes.app bundle.
+# v0.4.0 is the mockup-fidelity pass (square full-height panel, custom
+# gear menu, drawn ticks + marker highlight, folder home + bottom bar,
+# 5-pane Settings, linked drops, per-display side, drag-reorder,
+# Wide rail + Compact density).
 # Run on a Mac from inside the silvernotes-app folder:  ./build-app.sh
 # Result: dist/SilverNotes.app  (drag it into /Applications)
 set -euo pipefail
@@ -7,7 +11,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="SilverNotes"
 BUNDLE_ID="io.starterdev.silvernotes"
-VERSION="0.3.0"
+VERSION="0.4.0"
 MIN_MACOS="13.0"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"

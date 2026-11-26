@@ -1,5 +1,11 @@
 import AppKit
 import UniformTypeIdentifiers
+import Quartz
+
+extension NSPasteboard.PasteboardType {
+    /// Drag-reorder payload: a note's UUID string (audit 6.14).
+    static let snNote = NSPasteboard.PasteboardType("com.starterdev.silvernotes.note")
+}
 
 /// One note card in the stack. The card is the editor: it hosts a
 /// NoteTextView, an attachments area, and the per-note footer
@@ -8,7 +14,7 @@ import UniformTypeIdentifiers
 /// Decision 6 lives here: double-clicking the FOOTER STRIP folds/unfolds the
 /// card; double-clicking the body is standard macOS word selection (handled
 /// by NSTextView, untouched).
-final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
+final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     private(set) var noteID: UUID
     private var folderID: UUID
@@ -23,6 +29,16 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     /// keyboard shortcuts (⌥⌘P, ⌥⌘⏎, ⌥⌘1/2/3) act on it.
     var onBecomeActive: ((NoteCardView) -> Void)?
 
+    /// Press-hold-drag on the footer strip starts a reorder drag
+    /// (audit 6.14); the content controller runs the session's drop side.
+    var onReorderDragBegan: ((NoteCardView, NSEvent) -> Void)?
+
+    /// Compact density renders the footer icon-only (audit 7.1): the
+    /// timestamp is hidden.
+    var isCompactFooter: Bool = false {
+        didSet { timestampLabel.isHidden = isCompactFooter }
+    }
+
     private let textView = NoteTextView()
     private let textScroll = NSScrollView()
     private let foldedLabel = NSTextField(labelWithString: "")
@@ -30,9 +46,20 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     private let footerView = FooterStripView()
     private let timestampLabel = NSTextField(labelWithString: "")
     private let progressLabel = NSTextField(labelWithString: "")
+    private let progressBar = ProgressBarView()
+    /// Left-bar colour strip (Appearance → colour as a left bar, 2.19).
+    private let colorStrip = NSView()
+    /// Second shadow layer: CALayer supports one shadow, the package
+    /// specifies two (audit 2.29), so the soft outer shadow lives on
+    /// this backing layer filled with the card's surface colour.
+    private let softShadowLayer = CALayer()
+    private var surfaceColor: NSColor = SNTheme.cardBackground
     private var pinButton: NSButton!
     private var textHeightConstraint: NSLayoutConstraint!
     private var progressHeightConstraint: NSLayoutConstraint!
+    private var progressBarHeightConstraint: NSLayoutConstraint!
+    private var textTopConstraint: NSLayoutConstraint!
+    private var lastColorStyle: NoteColorStyle?
     private var isEditing = false
     private var renderWorkItem: DispatchWorkItem?
     /// The note this card was last configured with. `configure(with:)`
@@ -46,20 +73,21 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         return f
     }()
 
-    private static let dayFormatter: DateFormatter = {
+    private static let weekdayFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "MMM d"
+        f.dateFormat = "EEE"
         return f
     }()
 
     /// Footer timestamp in the design package's shape: "Today · 9:12 AM",
-    /// "Yesterday · 6:47 PM", "Nov 21 · 2:15 PM".
+    /// "Yesterday · 6:47 PM", and the weekday form "Mon · 2:15 PM" for
+    /// anything older (audit 4.10).
     private static func timestampText(for date: Date) -> String {
         let calendar = Calendar.current
         let time = timeFormatter.string(from: date)
         if calendar.isDateInToday(date) { return "Today · \(time)" }
         if calendar.isDateInYesterday(date) { return "Yesterday · \(time)" }
-        return "\(dayFormatter.string(from: date)) · \(time)"
+        return "\(weekdayFormatter.string(from: date)) · \(time)"
     }
 
     init(note: SNNote) {
@@ -82,12 +110,21 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     private func buildSubviews() {
         wantsLayer = true
         layer?.cornerRadius = 12
-        layer?.borderWidth = 1
-        layer?.borderColor = SNTheme.cardBorder.cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.08
-        layer?.shadowRadius = 4
-        layer?.shadowOffset = NSSize(width: 0, height: -1)
+        // No card border (audit 2.28): shadow only. The border returns
+        // at 2 pt in the accent ring colour while the card is edited.
+        layer?.borderWidth = 0
+        softShadowLayer.cornerRadius = 12
+        layer?.insertSublayer(softShadowLayer, at: 0)
+        applyCardSurface()
+
+        // Left-bar colour strip (hidden unless the Appearance colour
+        // style is Left bar and the note has a colour).
+        colorStrip.wantsLayer = true
+        colorStrip.layer?.cornerRadius = 12
+        colorStrip.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner]
+        colorStrip.translatesAutoresizingMaskIntoConstraints = false
+        colorStrip.isHidden = true
+        addSubview(colorStrip)
 
         // Text view inside a non-scrolling scroll view (the card grows with
         // its content; the panel's outer scroll view does the scrolling).
@@ -107,16 +144,21 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         foldedLabel.isHidden = true
         addSubview(foldedLabel)
 
+        // Attachments sit ABOVE the body text (audit 4.27).
         attachmentsStack.orientation = .vertical
         attachmentsStack.spacing = 6
         attachmentsStack.alignment = .leading
         attachmentsStack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(attachmentsStack)
 
-        // Task progress sits in the body area, above the footer rule —
-        // its row collapses to zero height on notes without tasks.
+        // Task progress: the 5 pt bar (audit 4.22) over the "n of m
+        // done" label, in the body area above the footer rule. Both
+        // collapse to zero height on notes without tasks.
+        progressBar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(progressBar)
+        progressBarHeightConstraint = progressBar.heightAnchor.constraint(equalToConstant: 0)
         progressLabel.font = NSFont.systemFont(ofSize: 10.5)
-        progressLabel.textColor = SNTheme.secondaryText
+        progressLabel.textColor = SNTheme.tertiaryText
         progressLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(progressLabel)
         progressHeightConstraint = progressLabel.heightAnchor.constraint(equalToConstant: 0)
@@ -132,30 +174,43 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         footerView.addSubview(footerRule)
 
         textHeightConstraint = textScroll.heightAnchor.constraint(equalToConstant: 60)
+        // Card padding per the rendered package (audit 1.6): 11 top /
+        // 13 sides / 7 bottom. The text view's own 6 pt inset counts
+        // toward the top and sides: 5 + 6 = 11, 7 + 6 = 13.
+        textTopConstraint = textScroll.topAnchor.constraint(equalTo: attachmentsStack.bottomAnchor, constant: 0)
         NSLayoutConstraint.activate([
-            // 12 pt card padding: 6 here + the text view's own 6 pt inset.
-            textScroll.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            textScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            textScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            attachmentsStack.topAnchor.constraint(equalTo: topAnchor, constant: 11),
+            attachmentsStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            attachmentsStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
+
+            textTopConstraint,
+            textScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
+            textScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
             textHeightConstraint,
 
-            foldedLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            foldedLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            foldedLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            foldedLabel.topAnchor.constraint(equalTo: topAnchor, constant: 11),
+            foldedLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            foldedLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
 
-            attachmentsStack.topAnchor.constraint(equalTo: textScroll.bottomAnchor, constant: 4),
-            attachmentsStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            attachmentsStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            colorStrip.leadingAnchor.constraint(equalTo: leadingAnchor),
+            colorStrip.topAnchor.constraint(equalTo: topAnchor),
+            colorStrip.bottomAnchor.constraint(equalTo: bottomAnchor),
+            colorStrip.widthAnchor.constraint(equalToConstant: 4),
 
-            progressLabel.topAnchor.constraint(equalTo: attachmentsStack.bottomAnchor, constant: 2),
-            progressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            progressBar.topAnchor.constraint(equalTo: textScroll.bottomAnchor, constant: 7),
+            progressBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            progressBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
+            progressBarHeightConstraint,
+
+            progressLabel.topAnchor.constraint(equalTo: progressBar.bottomAnchor, constant: 3),
+            progressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
             progressHeightConstraint,
 
             footerView.topAnchor.constraint(equalTo: progressLabel.bottomAnchor, constant: 2),
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            footerView.heightAnchor.constraint(equalToConstant: 28),
+            footerView.heightAnchor.constraint(equalToConstant: 30),
 
             footerRule.topAnchor.constraint(equalTo: footerView.topAnchor),
             footerRule.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
@@ -164,36 +219,93 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         ])
 
         footerView.onDoubleClick = { [weak self] in self?.toggleFold() }
+        footerView.onDragInitiated = { [weak self] event in
+            guard let self = self else { return }
+            self.onReorderDragBegan?(self, event)
+        }
 
         registerForDraggedTypes([.fileURL])
+    }
+
+    override func layout() {
+        super.layout()
+        softShadowLayer.frame = bounds
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyCardSurface()
+    }
+
+    /// Card surface + the package's dual shadow (audit 2.29): light gets
+    /// 0 1 3 rgba(20,22,30,.08) on the card layer plus 0 4 14
+    /// rgba(20,22,30,.05) on the backing layer; dark gets the single
+    /// 0 1 3 rgba(0,0,0,.4). (CSS blur radii are halved into
+    /// shadowRadius, the usual Core Animation approximation.)
+    private func applyCardSurface() {
+        layer?.backgroundColor = surfaceColor.cgColor
+        softShadowLayer.backgroundColor = surfaceColor.cgColor
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if dark {
+            layer?.shadowColor = NSColor.black.cgColor
+            layer?.shadowOpacity = 0.4
+            layer?.shadowRadius = 1.5
+            layer?.shadowOffset = NSSize(width: 0, height: -1)
+            softShadowLayer.shadowOpacity = 0
+        } else {
+            let ink = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1)
+            layer?.shadowColor = ink.cgColor
+            layer?.shadowOpacity = 0.08
+            layer?.shadowRadius = 1.5
+            layer?.shadowOffset = NSSize(width: 0, height: -1)
+            softShadowLayer.shadowColor = ink.cgColor
+            softShadowLayer.shadowOpacity = 0.05
+            softShadowLayer.shadowRadius = 7
+            softShadowLayer.shadowOffset = NSSize(width: 0, height: -4)
+        }
     }
 
     private func buildFooter() {
         footerView.translatesAutoresizingMaskIntoConstraints = false
 
+        // Footer buttons are 23×23 (audit 4.8) in the footer colour
+        // (audit 2.10).
         func footerButton(symbol: String, tip: String, action: Selector) -> NSButton {
             let button = HoverFooterButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tip) ?? NSImage(),
                                            target: self, action: action)
             button.bezelStyle = .inline
             button.isBordered = false
             button.toolTip = tip
-            button.contentTintColor = SNTheme.secondaryText
+            button.contentTintColor = SNTheme.footerText
             button.wantsLayer = true
             button.layer?.cornerRadius = 6
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 24).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+            button.widthAnchor.constraint(equalToConstant: 23).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 23).isActive = true
             return button
         }
 
-        let aaButton = footerButton(symbol: "textformat", tip: "Formatting", action: #selector(showFormattingPopover(_:)))
+        // The "Aa" button is the package's serif letters (Georgia, 700,
+        // 11 pt), not the SF Symbol (audit 4.9).
+        let aaButton = HoverFooterButton(title: "Aa", target: self, action: #selector(showFormattingPopover(_:)))
+        aaButton.bezelStyle = .inline
+        aaButton.isBordered = false
+        aaButton.toolTip = "Formatting"
+        aaButton.font = NSFont(name: "Georgia-Bold", size: 11) ?? NSFont.systemFont(ofSize: 11, weight: .bold)
+        aaButton.contentTintColor = SNTheme.footerText
+        aaButton.wantsLayer = true
+        aaButton.layer?.cornerRadius = 6
+        aaButton.translatesAutoresizingMaskIntoConstraints = false
+        aaButton.widthAnchor.constraint(equalToConstant: 23).isActive = true
+        aaButton.heightAnchor.constraint(equalToConstant: 23).isActive = true
+
         pinButton = footerButton(symbol: "pin", tip: "Pin note (⌥⌘P)", action: #selector(togglePin))
         let gearButton = footerButton(symbol: "gearshape", tip: "Note options", action: #selector(showGearMenu(_:)))
         let shareButton = footerButton(symbol: "square.and.arrow.up", tip: "Share", action: #selector(shareNote(_:)))
         let trashButton = footerButton(symbol: "trash", tip: "Move to Trash", action: #selector(trashNote))
 
         timestampLabel.font = NSFont.systemFont(ofSize: 10.5)
-        timestampLabel.textColor = SNTheme.secondaryText
+        timestampLabel.textColor = SNTheme.footerText
         timestampLabel.alignment = .center
         timestampLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -218,6 +330,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
 
     func configure(with note: SNNote) {
         let markup = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey)
+        let colorStyle = Preferences.colorStyle
         // Fast path: every render-relevant field matches the last
         // configuration, so skip the render, the attachment rebuild, and
         // the layout pass entirely. (updatedAt is deliberately excluded:
@@ -229,14 +342,16 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
            last.color == note.color, last.isPinned == note.isPinned,
            last.isFolded == note.isFolded, last.folderID == note.folderID,
            last.attachments == note.attachments,
+           lastColorStyle == colorStyle,
            textView.string == note.body, textView.showMarkup == markup {
             timestampLabel.stringValue = NoteCardView.timestampText(for: note.updatedAt)
             lastConfiguredNote = note
             return
         }
+        lastColorStyle = colorStyle
         noteID = note.id
         folderID = note.folderID
-        layer?.backgroundColor = SNTheme.tint(for: note.color).cgColor
+        applyColour(note)
         if textView.string != note.body {
             textView.string = note.body
         }
@@ -249,7 +364,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         textView.suppressesRenderOnPropertyChange = false
         textView.isEditable = !isTrashMode
         pinButton.image = NSImage(systemSymbolName: note.isPinned ? "pin.fill" : "pin", accessibilityDescription: "Pin")
-        pinButton.contentTintColor = note.isPinned ? SNTheme.pinnedActive : SNTheme.secondaryText
+        pinButton.contentTintColor = note.isPinned ? SNTheme.pinnedActive : SNTheme.footerText
         timestampLabel.stringValue = NoteCardView.timestampText(for: note.updatedAt)
         updateProgressLabel(note)
         rebuildAttachments(note)
@@ -268,6 +383,8 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         let progress = note.taskProgress
         progressLabel.stringValue = progress.total > 0 ? "\(progress.done) of \(progress.total) done" : ""
         progressHeightConstraint?.constant = progress.total > 0 ? 14 : 0
+        progressBarHeightConstraint?.constant = progress.total > 0 ? 5 : 0
+        progressBar.fraction = progress.total > 0 ? Double(progress.done) / Double(progress.total) : 0
     }
 
     private func applyFold(_ folded: Bool, note: SNNote) {
@@ -275,8 +392,27 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         attachmentsStack.isHidden = folded
         foldedLabel.isHidden = !folded
         if folded {
-            foldedLabel.stringValue = "▸ " + note.title
+            // Plain first line, no disclosure prefix (audit 4.12).
+            foldedLabel.stringValue = note.title
         }
+    }
+
+    /// Applies the note's colour in the Appearance pane's chosen style:
+    /// a full card background (the package's default), or a left bar —
+    /// a 4 pt strip in the colour on the card's left edge over the
+    /// plain card surface (audit 2.19's Settings option).
+    private func applyColour(_ note: SNNote) {
+        if Preferences.colorStyle == .leftBar, note.color != .none {
+            colorStrip.isHidden = false
+            colorStrip.layer?.backgroundColor = SNTheme.tint(for: note.color).cgColor
+            surfaceColor = isEditing ? SNTheme.cardFocusedBackground : SNTheme.cardBackground
+        } else {
+            colorStrip.isHidden = true
+            surfaceColor = (isEditing && note.color == .none)
+                ? SNTheme.cardFocusedBackground
+                : SNTheme.tint(for: note.color)
+        }
+        applyCardSurface()
     }
 
     private func applyTrashMode() {
@@ -297,18 +433,17 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
 
     /// The card being edited gets the design package's focus treatment:
     /// dark lifts the card a step (#3A3A41 on uncoloured notes); both
-    /// appearances draw the accent-tinted ring.
+    /// appearances draw the 2 pt accent ring (audit 2.6). Unedited
+    /// cards have no border at all (audit 2.28).
     private func applyFocusAppearance() {
         guard let note = lastConfiguredNote else { return }
         if isEditing {
-            layer?.backgroundColor = (note.color == .none
-                ? SNTheme.cardFocusedBackground
-                : SNTheme.tint(for: note.color)).cgColor
+            layer?.borderWidth = 2
             layer?.borderColor = SNTheme.accentRing.cgColor
         } else {
-            layer?.backgroundColor = SNTheme.tint(for: note.color).cgColor
-            layer?.borderColor = SNTheme.cardBorder.cgColor
+            layer?.borderWidth = 0
         }
+        applyColour(note)
     }
 
     // MARK: Text sizing
@@ -418,119 +553,33 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         store.toggleNotePin(id: noteID)
     }
 
-    /// The gear menu currently on screen, if any — a click in its
-    /// swatch row dismisses it explicitly (custom-view menu items do
-    /// not close the menu on their own).
-    private var currentGearMenu: NSMenu?
-
     @objc private func showGearMenu(_ sender: NSButton) {
         onBecomeActive?(self)
-        let menu = NSMenu()
-        menu.delegate = self
-        currentGearMenu = menu
         let note = store.note(id: noteID)
-
-        let pinItem = NSMenuItem(title: "Pin", action: #selector(togglePin), keyEquivalent: "p")
-        pinItem.keyEquivalentModifierMask = [.command, .option]
-        pinItem.target = self
-        if note?.isPinned == true { pinItem.state = .on }
-        menu.addItem(pinItem)
-
-        let foldItem = NSMenuItem(title: "Fold", action: #selector(toggleFoldMenuItem), keyEquivalent: "\r")
-        foldItem.keyEquivalentModifierMask = [.command, .option]
-        foldItem.target = self
-        if note?.isFolded == true { foldItem.state = .on }
-        menu.addItem(foldItem)
-
-        menu.addItem(.separator())
-
-        // Colour: a flat row of circular swatches (Default + the 7
-        // tokens), the active one ringed — the design package's menu.
-        menu.addItem(sectionLabelItem("Colour"))
-        let swatchItem = NSMenuItem()
-        swatchItem.view = swatchRowView(active: note?.color ?? .none)
-        menu.addItem(swatchItem)
-
-        menu.addItem(.separator())
-
-        // Mode: rendering only — switching never mutates the source (register §3.12).
-        menu.addItem(sectionLabelItem("Mode"))
-        let modeTitles: [NoteMode: String] = [.standard: "Standard", .plain: "Plain Text", .code: "Code"]
-        for (index, mode) in NoteMode.allCases.enumerated() {
-            let item = NSMenuItem(title: modeTitles[mode] ?? mode.displayName, action: #selector(pickMode(_:)), keyEquivalent: "\(index + 1)")
-            item.keyEquivalentModifierMask = [.command, .option]
-            item.representedObject = mode.rawValue
-            item.target = self
-            if note?.mode == mode { item.state = .on }
-            menu.addItem(item)
-        }
-
-        menu.addItem(.separator())
-        let clearItem = NSMenuItem(title: "Clear Completed Tasks", action: #selector(clearCompletedTasks), keyEquivalent: "")
-        clearItem.target = self
-        menu.addItem(clearItem)
-        let exportItem = NSMenuItem(title: "Export Note as Markdown…", action: #selector(exportNote), keyEquivalent: "")
-        exportItem.target = self
-        menu.addItem(exportItem)
-
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        GearMenu.show(relativeTo: sender,
+                      isPinned: note?.isPinned ?? false,
+                      isFolded: note?.isFolded ?? false,
+                      color: note?.color ?? .none,
+                      mode: note?.mode ?? .standard,
+                      actions: GearMenu.Actions(
+                        onPin: { [weak self] in self?.togglePin() },
+                        onFold: { [weak self] in self?.toggleFold() },
+                        onColor: { [weak self] token in
+                            guard let self = self else { return }
+                            self.store.setNoteColor(id: self.noteID, color: token)
+                            self.reloadFromStore()
+                        },
+                        onMode: { [weak self] mode in
+                            guard let self = self else { return }
+                            // Mode is rendering only — switching never
+                            // mutates the source (register §3.12).
+                            self.store.setNoteMode(id: self.noteID, mode: mode)
+                            self.reloadFromStore()
+                        },
+                        onClearCompletedTasks: { [weak self] in self?.clearCompletedTasks() },
+                        onExport: { [weak self] in self?.exportNote() }
+                      ))
     }
-
-    /// A disabled, small-caps section label inside the gear menu.
-    private func sectionLabelItem(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title.uppercased(), action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
-    /// The gear menu's colour row: one circular button per token
-    /// (Default first), the note's current colour ringed in the accent.
-    private func swatchRowView(active: NoteColorToken) -> NSView {
-        let tokens: [NoteColorToken] = [.none] + NoteColorToken.swatches
-        let row = NSView(frame: NSRect(x: 0, y: 0, width: 212, height: 30))
-        var x: CGFloat = 10
-        for (index, token) in tokens.enumerated() {
-            let ring = NSView(frame: NSRect(x: x, y: 3, width: 24, height: 24))
-            ring.wantsLayer = true
-            ring.layer?.cornerRadius = 12
-            if token == active {
-                ring.layer?.borderWidth = 2
-                ring.layer?.borderColor = SNTheme.accent.cgColor
-            }
-            let button = NSButton(frame: NSRect(x: 2, y: 2, width: 20, height: 20))
-            button.title = ""
-            button.isBordered = false
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 10
-            button.layer?.backgroundColor = SNTheme.swatch(for: token).cgColor
-            button.layer?.borderWidth = 1
-            button.layer?.borderColor = SNTheme.cardBorder.cgColor
-            button.tag = index
-            button.target = self
-            button.action = #selector(pickColorFromSwatch(_:))
-            button.toolTip = token.displayName
-            ring.addSubview(button)
-            row.addSubview(ring)
-            x += 24
-        }
-        return row
-    }
-
-    @objc private func pickColorFromSwatch(_ sender: NSButton) {
-        let tokens: [NoteColorToken] = [.none] + NoteColorToken.swatches
-        guard tokens.indices.contains(sender.tag) else { return }
-        store.setNoteColor(id: noteID, color: tokens[sender.tag])
-        currentGearMenu?.cancelTracking()
-        reloadFromStore()
-    }
-
-    @objc private func pickMode(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let mode = NoteMode(rawValue: raw) else { return }
-        store.setNoteMode(id: noteID, mode: mode)
-        reloadFromStore()
-    }
-
-    @objc private func toggleFoldMenuItem() { toggleFold() }
 
     func toggleFold() {
         guard let note = store.note(id: noteID) else { return }
@@ -601,19 +650,6 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: NSMenuDelegate (auto-hide allow-list)
-
-    func menuWillOpen(_ menu: NSMenu) {
-        PanelController.shared.beginChildInteraction()
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        if menu === currentGearMenu { currentGearMenu = nil }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            PanelController.shared.endChildInteraction()
-        }
-    }
-
     // MARK: Attachments UI
 
     /// Decoded card images keyed by attachment ID, so attachment rebuilds
@@ -643,12 +679,22 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
             sub.removeFromSuperview()
         }
         for attachment in note.attachments {
-            attachmentsStack.addArrangedSubview(attachmentView(for: attachment))
+            let view = attachmentView(for: attachment)
+            attachmentsStack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalTo: attachmentsStack.widthAnchor).isActive = true
         }
         attachmentsStack.isHidden = note.attachments.isEmpty || note.isFolded
+        // Text starts 5 pt below the card top when there is no file
+        // block (5 + the text view's 6 pt inset = the package's 11);
+        // below a file block it gets a small gap instead.
+        textTopConstraint?.constant = note.attachments.isEmpty ? -6 : 6
     }
 
-    /// "JPEG image · 3.8 MB" — type from the extension, size from disk.
+    /// "JPEG image · 3.8 MB · dropped in from Finder" — type from the
+    /// extension, size from disk, and the provenance segment recorded
+    /// at capture time (audit 4.25). Attachments recorded before
+    /// origins existed show no provenance segment — never a fabricated
+    /// one.
     private func attachmentMeta(for attachment: SNAttachment, url: URL) -> String {
         let ext = url.pathExtension.lowercased()
         let typeName: String
@@ -668,29 +714,37 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
            let size = attributes[.size] as? Int64 {
             parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
         }
+        if let origin = attachment.origin, !origin.isEmpty {
+            parts.append(origin)
+        }
         return parts.joined(separator: " · ")
     }
 
+    /// The package's file card (audits 4.24–4.28): no container — the
+    /// thumbnail and text sit directly on the card. Filename 12.5 pt at
+    /// weight 700 over the meta line, with the "Open in Quick Look" link
+    /// row under the meta. A linked file that has gone missing renders
+    /// a graceful missing-file state instead of a dead link.
     private func attachmentView(for attachment: SNAttachment) -> NSView {
         let container = NSView()
-        container.wantsLayer = true
-        container.layer?.cornerRadius = 8
-        container.layer?.backgroundColor = SNTheme.codeBackground.cgColor
         container.translatesAutoresizingMaskIntoConstraints = false
 
         let url = store.attachmentURL(attachment)
+        let exists = store.attachmentFileExists(attachment)
 
-        // Filename (semibold) over a secondary meta line, shared by both
-        // attachment shapes, per the design package's file card.
         let nameLabel = NSTextField(labelWithString: attachment.fileName)
-        nameLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        nameLabel.font = NSFont.systemFont(ofSize: 12.5, weight: .bold)
         nameLabel.textColor = SNTheme.primaryText
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        let metaLabel = NSTextField(labelWithString: attachmentMeta(for: attachment, url: url))
+
+        let metaLabel = NSTextField(labelWithString: exists ? attachmentMeta(for: attachment, url: url)
+                                                            : "Original file not found")
         metaLabel.font = NSFont.systemFont(ofSize: 11)
-        metaLabel.textColor = SNTheme.secondaryText
+        metaLabel.textColor = exists ? SNTheme.secondaryText : SNTheme.tertiaryText
+        metaLabel.lineBreakMode = .byTruncatingTail
         metaLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let metaStack = NSStackView(views: [nameLabel, metaLabel])
         metaStack.orientation = .vertical
         metaStack.alignment = .leading
@@ -698,7 +752,21 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         metaStack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(metaStack)
 
-        if attachment.isImage, let image = NoteCardView.cardImage(for: attachment, store: store) {
+        // "Open in Quick Look" link row under the meta (audit 4.26),
+        // aligned with the name/meta column.
+        let quickLookButton = NSButton(title: "Open in Quick Look", target: self, action: #selector(openQuickLook(_:)))
+        quickLookButton.bezelStyle = .inline
+        quickLookButton.isBordered = false
+        quickLookButton.font = NSFont.systemFont(ofSize: 11)
+        quickLookButton.contentTintColor = SNTheme.link
+        quickLookButton.alignment = .left
+        quickLookButton.identifier = NSUserInterfaceItemIdentifier(attachment.id.uuidString)
+        quickLookButton.translatesAutoresizingMaskIntoConstraints = false
+        quickLookButton.isHidden = !exists
+        container.addSubview(quickLookButton)
+
+        let leadingAnchor: NSLayoutXAxisAnchor
+        if exists, attachment.isImage, let image = NoteCardView.cardImage(for: attachment, store: store) {
             let imageView = NSImageView(image: image)
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.wantsLayer = true
@@ -707,43 +775,55 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
             imageView.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(imageView)
             NSLayoutConstraint.activate([
-                imageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-                imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-                imageView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
+                imageView.topAnchor.constraint(equalTo: container.topAnchor),
+                imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
                 imageView.widthAnchor.constraint(equalToConstant: 74),
                 imageView.heightAnchor.constraint(equalToConstant: 62),
-                metaStack.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 10),
-                metaStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-                metaStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+                metaStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+            ])
+            leadingAnchor = imageView.trailingAnchor
+            NSLayoutConstraint.activate([
+                metaStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             ])
         } else {
             let icon = NSImageView(image: NSWorkspace.shared.icon(forFile: url.path))
             icon.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(icon)
             NSLayoutConstraint.activate([
-                icon.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
-                icon.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+                icon.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 2),
+                icon.topAnchor.constraint(equalTo: container.topAnchor, constant: 2),
                 icon.widthAnchor.constraint(equalToConstant: 28),
                 icon.heightAnchor.constraint(equalToConstant: 28),
-                metaStack.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-                metaStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-                metaStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-                container.heightAnchor.constraint(equalToConstant: 48),
+                metaStack.topAnchor.constraint(equalTo: container.topAnchor, constant: 2),
+            ])
+            leadingAnchor = icon.trailingAnchor
+            NSLayoutConstraint.activate([
+                metaStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             ])
         }
-
-        let openButton = NSButton(title: "", target: self, action: #selector(openAttachment(_:)))
-        openButton.isTransparent = true
-        openButton.identifier = NSUserInterfaceItemIdentifier(attachment.id.uuidString)
-        openButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(openButton)
         NSLayoutConstraint.activate([
-            openButton.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            openButton.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            openButton.topAnchor.constraint(equalTo: container.topAnchor),
-            openButton.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            metaStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            quickLookButton.leadingAnchor.constraint(equalTo: metaStack.leadingAnchor),
+            quickLookButton.topAnchor.constraint(equalTo: metaStack.bottomAnchor, constant: 5),
+            quickLookButton.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
-        container.widthAnchor.constraint(equalToConstant: 280).isActive = true
+
+        // Clicking the thumbnail/meta opens the file in its default app
+        // (unchanged behaviour); the Quick Look row sits below the
+        // covered area and keeps its own action.
+        if exists {
+            let openButton = NSButton(title: "", target: self, action: #selector(openAttachment(_:)))
+            openButton.isTransparent = true
+            openButton.identifier = NSUserInterfaceItemIdentifier(attachment.id.uuidString)
+            openButton.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(openButton)
+            NSLayoutConstraint.activate([
+                openButton.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                openButton.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                openButton.topAnchor.constraint(equalTo: container.topAnchor),
+                openButton.bottomAnchor.constraint(equalTo: metaStack.bottomAnchor, constant: 2),
+            ])
+        }
         return container
     }
 
@@ -754,31 +834,122 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(store.attachmentURL(attachment))
     }
 
-    // MARK: Drag & drop (files onto a card embed a copy)
+    @objc private func openQuickLook(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue,
+              let note = store.note(id: noteID),
+              let attachment = note.attachments.first(where: { $0.id.uuidString == raw }) else { return }
+        QuickLookPresenter.shared.present(url: store.attachmentURL(attachment))
+    }
+
+    // MARK: Reorder drag (audit 6.14)
+
+    /// Begins a drag session carrying this note's ID. Called by the
+    /// content controller when the footer strip reports a
+    /// press-hold-drag; the controller owns the drop side.
+    func beginReorderDrag(with event: NSEvent) {
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(noteID.uuidString, forType: .snNote)
+        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+        if let rep = bitmapImageRepForCachingDisplay(in: bounds) {
+            cacheDisplay(in: bounds, to: rep)
+            let image = NSImage(size: bounds.size)
+            image.addRepresentation(rep)
+            draggingItem.setDraggingFrame(bounds, contents: image)
+        } else {
+            draggingItem.setDraggingFrame(bounds, contents: nil)
+        }
+        beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        return .move
+    }
+
+    // MARK: Drag & drop (files onto a card: images embed, files link)
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard !isTrashMode else { return [] }
+        // Temporary accent ring while a drag hovers (cards otherwise
+        // carry no border, audit 2.28).
         layer?.borderColor = SNTheme.accent.cgColor
         layer?.borderWidth = 2
         return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        layer?.borderColor = SNTheme.cardBorder.cgColor
-        layer?.borderWidth = 1
+        restoreDragBorder()
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        layer?.borderColor = SNTheme.cardBorder.cgColor
-        layer?.borderWidth = 1
+        restoreDragBorder()
         let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] ?? []
         guard !urls.isEmpty else { return false }
         var added = false
         for url in urls {
-            if store.addAttachment(noteID: noteID, from: url) != nil { added = true }
+            if store.addAttachment(noteID: noteID, from: url, origin: "dropped in from Finder") != nil { added = true }
         }
         if added { reloadFromStore() }
         return added
+    }
+
+    private func restoreDragBorder() {
+        if isEditing {
+            layer?.borderColor = SNTheme.accentRing.cgColor
+            layer?.borderWidth = 2
+        } else {
+            layer?.borderWidth = 0
+        }
+    }
+}
+
+/// The checklist progress bar (audit 4.22): 5 pt, rounded, track
+/// rgba(120,120,135,0.2), fill in the task green.
+final class ProgressBarView: NSView {
+    var fraction: Double = 0 {
+        didSet { needsDisplay = true }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let track = NSBezierPath(roundedRect: bounds, xRadius: 2.5, yRadius: 2.5)
+        SNTheme.progressTrack.setFill()
+        track.fill()
+        let clamped = min(max(fraction, 0), 1)
+        guard clamped > 0 else { return }
+        let width = max(bounds.height, bounds.width * CGFloat(clamped))
+        let fill = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: width, height: bounds.height),
+                                xRadius: 2.5, yRadius: 2.5)
+        SNTheme.taskDone.setFill()
+        fill.fill()
+    }
+}
+
+/// Presents one file in Quick Look (the file card's link row, 4.26).
+final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    static let shared = QuickLookPresenter()
+    private var url: URL?
+
+    func present(url: URL) {
+        self.url = url
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = self
+        panel.delegate = self
+        panel.currentPreviewItemIndex = 0
+        PanelController.shared.beginChildInteraction()
+        panel.makeKeyAndOrderFront(nil)
+        panel.reloadData()
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        url == nil ? 0 : 1
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        guard let url = url else { return nil }
+        return url as NSURL
+    }
+
+    func previewPanelWillClose(_ panel: QLPreviewPanel!) {
+        PanelController.shared.endChildInteraction()
     }
 }
 
@@ -808,13 +979,35 @@ final class HoverFooterButton: NSButton {
 
 /// The footer strip: a plain area whose double-click toggles fold
 /// (Decision 6). Buttons inside it consume their own clicks first.
+/// It is also the drag handle for reordering (audit 6.14): a press
+/// held ~150 ms that then moves past ~4 pt starts a reorder drag.
 final class FooterStripView: NSView {
     var onDoubleClick: (() -> Void)?
+    var onDragInitiated: ((NSEvent) -> Void)?
+    private var downTimestamp: TimeInterval = 0
+    private var downLocation: NSPoint = .zero
+    private var dragStarted = false
+
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 {
             onDoubleClick?()
             return
         }
+        downTimestamp = event.timestamp
+        downLocation = event.locationInWindow
+        dragStarted = false
         super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        if !dragStarted,
+           event.timestamp - downTimestamp >= 0.15,
+           hypot(event.locationInWindow.x - downLocation.x,
+                 event.locationInWindow.y - downLocation.y) > 4 {
+            dragStarted = true
+            onDragInitiated?(event)
+            return
+        }
+        super.mouseDragged(with: event)
     }
 }

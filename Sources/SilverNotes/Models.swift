@@ -34,7 +34,10 @@ enum NoteColorToken: String, Codable, CaseIterable {
         case .none: return "Default"
         case .yellow: return "Yellow"
         case .orange: return "Orange"
-        case .pink: return "Pink"
+        // The design package calls #FFC9C2 "Red" (audit 2.18). Only the
+        // user-visible label changes: the stored raw value stays "pink",
+        // so existing notes decode identically.
+        case .pink: return "Red"
         case .purple: return "Purple"
         case .blue: return "Blue"
         case .green: return "Green"
@@ -46,6 +49,13 @@ enum NoteColorToken: String, Codable, CaseIterable {
     /// which is offered as a separate "Default" menu item).
     static var swatches: [NoteColorToken] {
         [.yellow, .orange, .pink, .purple, .blue, .green, .gray]
+    }
+
+    /// Gear-menu swatch order (audit 4.14): the package's six first —
+    /// Default, Yellow, Red, Green, Blue, Purple — then the app's extra
+    /// Orange and Gray last (kept: existing notes use them).
+    static var gearMenuOrder: [NoteColorToken] {
+        [.none, .yellow, .pink, .green, .blue, .purple, .orange, .gray]
     }
 }
 
@@ -79,23 +89,40 @@ struct SNFolder: Codable, Identifiable, Equatable {
     }
 }
 
-// MARK: - Attachment (embedded copy — see NoteStore for the storage choice)
+// MARK: - Attachment (embedded copy for images; linked for other files —
+// see NoteStore. Audit 6.11: dropped files are linked, not copied;
+// images are still embedded.)
 
 struct SNAttachment: Codable, Identifiable, Equatable {
     var id: UUID
     var fileName: String
-    /// Path relative to the app's Attachments directory.
+    /// Path relative to the app's Attachments directory. Empty for a
+    /// LINKED attachment, whose file stays at `linkedPath`.
     var relativePath: String
     var isImage: Bool
     var addedAt: Date
+    /// Provenance label for the file card's meta line (audit 4.25), e.g.
+    /// "dropped in from Finder". Optional: attachments recorded before
+    /// v0.4.0 have no origin and show no provenance segment — one is
+    /// never fabricated for them. (Optional so old stores decode.)
+    var origin: String? = nil
+    /// Absolute path of the original file for a LINKED attachment
+    /// (audit 6.11). Nil for embedded copies. Optional for the same
+    /// backward-compatibility reason as `origin`.
+    var linkedPath: String? = nil
 
-    init(id: UUID = UUID(), fileName: String, relativePath: String, isImage: Bool, addedAt: Date = Date()) {
+    init(id: UUID = UUID(), fileName: String, relativePath: String, isImage: Bool, addedAt: Date = Date(),
+         origin: String? = nil, linkedPath: String? = nil) {
         self.id = id
         self.fileName = fileName
         self.relativePath = relativePath
         self.isImage = isImage
         self.addedAt = addedAt
+        self.origin = origin
+        self.linkedPath = linkedPath
     }
+
+    var isLinked: Bool { linkedPath != nil }
 }
 
 // MARK: - Note

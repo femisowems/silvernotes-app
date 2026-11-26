@@ -9,8 +9,8 @@ import QuartzCore
 /// - Click-outside auto-hide with an allow-list: while a menu, popover,
 ///   share picker, or save panel belonging to the panel is up, auto-hide is
 ///   suspended (childInteractionCount > 0). Pin-open disables auto-hide.
-/// - Esc hides innermost-first: formatting toolbar → text selection →
-///   panel (menus/popovers consume their own Esc natively).
+/// - Esc hides innermost-first: formatting toolbar → panel
+///   (menus/popovers consume their own Esc natively).
 /// - Focus is captured before showing and restored to the previously
 ///   active app on hide (register §2.9).
 /// - The panel hides on screen lock, always (register §1.9).
@@ -40,6 +40,13 @@ final class PanelController: NSObject {
     private var hotSideTimer: Timer?
     private var dragRevealTimer: Timer?
     private var childInteractionCount = 0
+
+    /// How the panel was most recently revealed — the cursor-leave
+    /// grace (audit 6.12) applies only to edge reveals (Hot Side /
+    /// drag-in), and only until the user clicks or types into the panel.
+    private enum ShowSource { case edge, direct }
+    private var showSource: ShowSource = .direct
+    private var cursorLeaveTimer: Timer?
 
     private override init() { super.init() }
 
@@ -108,8 +115,11 @@ final class PanelController: NSObject {
         sliver.orderFront(nil)
     }
 
-    // MARK: Geometry (mockup spec: ~34% of screen width, 300–560 pt clamp,
-    // full height below the menu bar — NSScreen.visibleFrame is exactly that)
+    // MARK: Geometry (mockup spec: Standard ~34% of screen width with a
+    // 300–560 pt clamp; Wide ~48% (audit 7.2); Compact narrows to
+    // 272–300 (audit 7.1). Height runs from below the menu bar to the
+    // PHYSICAL screen bottom (audit 1.3) — a visible bottom Dock does
+    // not lift it. The side is remembered per display (audit 6.13).)
 
     private func targetScreen() -> NSScreen {
         let mouse = NSEvent.mouseLocation
@@ -120,20 +130,29 @@ final class PanelController: NSObject {
 
     private func panelFrame(on screen: NSScreen, visible: Bool) -> NSRect {
         let visibleFrame = screen.visibleFrame
-        let width = min(max(visibleFrame.width * 0.34, 300), 560)
-        let side = Preferences.panelSide
+        let width: CGFloat
+        if Preferences.density == .compact {
+            width = min(max(visibleFrame.width * 0.34, 272), 300)
+        } else if Preferences.panelWidth == .wide {
+            width = min(max(visibleFrame.width * 0.48, 380), 1000)
+        } else {
+            width = min(max(visibleFrame.width * 0.34, 300), 560)
+        }
+        let side = Preferences.effectivePanelSide(for: screen)
         let x: CGFloat
         if visible {
             x = side == .right ? visibleFrame.maxX - width : visibleFrame.minX
         } else {
             x = side == .right ? screen.frame.maxX : screen.frame.minX - width
         }
-        return NSRect(x: x, y: visibleFrame.minY, width: width, height: visibleFrame.height)
+        let y = screen.frame.minY
+        let height = visibleFrame.maxY - screen.frame.minY
+        return NSRect(x: x, y: y, width: width, height: height)
     }
 
     private func positionSliver() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let side = Preferences.panelSide
+        let side = Preferences.effectivePanelSide(for: screen)
         let height: CGFloat = 118
         let y = screen.visibleFrame.midY - height / 2
         let x = side == .right ? screen.frame.maxX - 22 : screen.frame.minX
@@ -160,12 +179,17 @@ final class PanelController: NSObject {
     }
 
     func show() {
+        show(source: .direct)
+    }
+
+    private func show(source: ShowSource) {
         ensureSetUp()
         // Launch-splash bookkeeping only: it never gates, delays, or
         // alters the show — the splash is a separate window that fades
         // on its own schedule.
         LaunchSplash.shared.panelPresented()
         if isPanelVisible && panelIsOnScreen { return }
+        showSource = source
         print("SilverNotes: show() — panel sliding in")
         previousApp = NSWorkspace.shared.frontmostApplication
         let screen = targetScreen()
@@ -215,6 +239,9 @@ final class PanelController: NSObject {
         ensureSetUp()
         guard isPanelVisible else { return }
         isPanelVisible = false
+        cursorLeaveTimer?.invalidate()
+        cursorLeaveTimer = nil
+        GearMenu.dismissIfOpen()
         FormattingToolbar.shared.hide()
         guard let screen = panel.screen ?? NSScreen.main else {
             panel.orderOut(nil)
@@ -259,12 +286,26 @@ final class PanelController: NSObject {
 
     /// Re-dock after the side preference changes: geometry, sliver, corner.
     /// Both side-preference write sites (Settings, status-bar menu) route
-    /// through here, so the cached side is refreshed here too.
+    /// through here, so the cached side is refreshed here too. The side
+    /// is per-display (audit 6.13): the cached value follows the panel's
+    /// current screen.
     func sideDidChange() {
         ensureSetUp()
-        panelSideCached = Preferences.panelSide
+        let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        panelSideCached = Preferences.effectivePanelSide(for: screen)
         positionSliver()
-        contentController.updateRoundedCorner(for: Preferences.panelSide)
+        contentController.updateRoundedCorner(for: panelSideCached)
+        if isPanelVisible {
+            panel.setFrame(panelFrame(on: screen, visible: true), display: true)
+        }
+    }
+
+    /// The Standard/Wide width step or the density changed in Settings:
+    /// re-frame a visible panel and let the content rebuild its chrome
+    /// (the folder rail appears/disappears with Wide).
+    func panelWidthPreferenceDidChange() {
+        ensureSetUp()
+        contentController.reload()
         if isPanelVisible, let screen = panel.screen ?? NSScreen.main {
             panel.setFrame(panelFrame(on: screen, visible: true), display: true)
         }
@@ -306,6 +347,17 @@ final class PanelController: NSObject {
             guard let self = self else { return event }
             return self.handleLocalKeyDown(event) ? nil : event
         }
+        // Clicking INTO the panel cancels the cursor-leave grace: the
+        // user has taken hold of it (audit 6.12).
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, self.isPanelVisible else { return event }
+            if self.panel.frame.contains(NSEvent.mouseLocation) {
+                self.showSource = .direct
+                self.cursorLeaveTimer?.invalidate()
+                self.cursorLeaveTimer = nil
+            }
+            return event
+        }
     }
 
     /// Installs or removes the global mouse-moved / drag monitors to match
@@ -341,7 +393,11 @@ final class PanelController: NSObject {
     }
 
     private func handleMouseMoved() {
-        guard hotSideEnabledCached, !isPanelVisible else { return }
+        guard hotSideEnabledCached else { return }
+        if isPanelVisible {
+            handleCursorLeaveGrace()
+            return
+        }
         // Drag suppression: never Hot-Side-trigger while a drag is in flight;
         // drags have their own reveal path with a wider zone.
         guard NSEvent.pressedMouseButtons == 0 else { return }
@@ -356,12 +412,38 @@ final class PanelController: NSObject {
             if hotSideTimer == nil {
                 hotSideTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { [weak self] _ in
                     self?.hotSideTimer = nil
-                    self?.show()
+                    self?.show(source: .edge)
                 }
             }
         } else {
             hotSideTimer?.invalidate()
             hotSideTimer = nil
+        }
+    }
+
+    /// Cursor-leave grace (audit 6.12): a panel revealed by the edge
+    /// hides ~500 ms after the cursor leaves it — unless the user has
+    /// clicked or typed into it (showSource flips to .direct), the
+    /// panel is pinned, or a child interaction (menu, popover, save
+    /// panel) is in flight. Re-entering cancels the timer.
+    private func handleCursorLeaveGrace() {
+        guard showSource == .edge, !Preferences.panelPinned, !autoHideSuspended else {
+            cursorLeaveTimer?.invalidate()
+            cursorLeaveTimer = nil
+            return
+        }
+        if panel.frame.contains(NSEvent.mouseLocation) {
+            cursorLeaveTimer?.invalidate()
+            cursorLeaveTimer = nil
+        } else if cursorLeaveTimer == nil {
+            cursorLeaveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                self.cursorLeaveTimer = nil
+                if self.isPanelVisible, self.showSource == .edge,
+                   !Preferences.panelPinned, !self.autoHideSuspended {
+                    self.hide()
+                }
+            }
         }
     }
 
@@ -375,7 +457,7 @@ final class PanelController: NSObject {
             if dragRevealTimer == nil {
                 dragRevealTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
                     self?.dragRevealTimer = nil
-                    self?.show()
+                    self?.show(source: .edge)
                 }
             }
         } else {
@@ -395,17 +477,36 @@ final class PanelController: NSObject {
     /// delivered to our own app (i.e. while the panel or Settings is key).
     private func handleLocalKeyDown(_ event: NSEvent) -> Bool {
         guard isPanelVisible, panel.isKeyWindow else { return false }
+        // Typing into the panel cancels the cursor-leave grace (6.12).
+        showSource = .direct
+        cursorLeaveTimer?.invalidate()
+        cursorLeaveTimer = nil
         if event.keyCode == 53 { // Esc
+            // Ladder (audit 6.6, per the user's explicit direction): the
+            // formatting toolbar first, then the panel closes. There is
+            // deliberately NO selection-collapse step.
             if FormattingToolbar.shared.isVisible {
                 FormattingToolbar.shared.hide()
                 return true
             }
-            if let textView = panel.firstResponder as? NSTextView, textView.selectedRange().length > 0 {
-                textView.setSelectedRange(NSRange(location: textView.selectedRange().location, length: 0))
-                return true
-            }
             hide()
             return true
+        }
+        // ⌘+ / ⌘− adjust the global body size (audit 3.14): step 0.5,
+        // clamped 11–16 by the preference, persisted, and every visible
+        // card re-renders at the new size.
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.option) {
+            let chars = event.charactersIgnoringModifiers ?? ""
+            if chars == "+" || chars == "=" {
+                Preferences.bodyFontSize += 0.5
+                contentController.reload()
+                return true
+            }
+            if chars == "-" || chars == "_" {
+                Preferences.bodyFontSize -= 0.5
+                contentController.reload()
+                return true
+            }
         }
         return contentController.handlePanelKeyDown(event)
     }
@@ -462,7 +563,7 @@ private final class SliverView: NSView {
         let chevron = side == .right ? "‹" : "›"
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: SNTheme.secondaryText
+            .foregroundColor: SNTheme.sliverIcon
         ]
         let size = (chevron as NSString).size(withAttributes: attrs)
         (chevron as NSString).draw(at: NSPoint(x: bounds.midX - size.width / 2,

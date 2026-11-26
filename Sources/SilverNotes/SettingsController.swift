@@ -1,15 +1,32 @@
 import AppKit
 import ServiceManagement
 
-/// Minimal Settings window for SilverNotes:
-/// dock side, Hot Side on/off, panel pin, "show markup", launch at login
-/// (real, via SMAppService on macOS 13+), check for updates (GitHub
-/// Releases, via UpdateChecker), plus the product/pricing facts.
+/// Settings window for SilverNotes (audit 4.45): a sidebar window with
+/// five panes — General / Appearance / Editor / Backups / Shortcuts.
+///
+/// General carries launch at login (real, via SMAppService on macOS
+/// 13+), Hot Side, panel side (per-display, audit 6.13), the
+/// Standard/Wide width step (7.2), pin panel open (4.50), the licence
+/// line (4.51), Check for Updates (GitHub Releases, via UpdateChecker),
+/// and the version footer. Appearance carries the note-colour style
+/// (2.19) and the Compact density (7.1). Editor carries Show Markdown
+/// markup and the body font size (3.14). Backups surfaces the store's
+/// backup rotation read-only (4.52). Shortcuts is a read-only list.
+///
+/// HARD DISCIPLINE (the v0.2.1 crash): buildWindow creates EVERY
+/// control in EVERY pane first, and only then runs any refresh —
+/// refreshLaunchAtLoginState() writes statusLabel in every branch, and
+/// refreshing before the label exists trapped on first open in
+/// v0.1.0–v0.2.0.
 final class SettingsController: NSObject, NSWindowDelegate {
 
     static let shared = SettingsController()
 
     private var window: NSWindow?
+    private var paneViews: [NSView] = []
+    private var sidebarButtons: [NSButton] = []
+
+    // General pane
     private var launchAtLoginCheckbox: NSButton!
     private var statusLabel: NSTextField!
     private var updateButton: NSButton!
@@ -17,6 +34,14 @@ final class SettingsController: NSObject, NSWindowDelegate {
     /// Non-nil while the update button means "install this version"
     /// rather than "check"; set by a check that found a newer release.
     private var pendingInstallVersion: String?
+
+    // Editor pane
+    private var fontSizeLabel: NSTextField!
+    private var fontSizeStepper: NSStepper!
+
+    // Backups pane
+    private var backupsCountLabel: NSTextField!
+    private var backupsRecentLabel: NSTextField!
 
     private override init() { super.init() }
 
@@ -32,6 +57,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
     /// start the same check the button runs.
     func showAndCheckForUpdates() {
         show()
+        selectPane(0)
         runUpdateCheck()
     }
 
@@ -39,87 +65,300 @@ final class SettingsController: NSObject, NSWindowDelegate {
         PanelController.shared.endChildInteraction()
     }
 
+    // MARK: Window construction
+
     private func buildWindow() {
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 344))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 430))
 
-        func label(_ text: String, y: CGFloat, bold: Bool = false) -> NSTextField {
-            let field = NSTextField(labelWithString: text)
-            field.font = bold ? NSFont.systemFont(ofSize: 13, weight: .semibold) : NSFont.systemFont(ofSize: 12)
-            field.textColor = SNTheme.primaryText
-            field.frame = NSRect(x: 20, y: y, width: 340, height: 18)
-            content.addSubview(field)
-            return field
+        // Sidebar: five rows, the selected one on the accent (the
+        // package's .srow.sel).
+        let sidebar = NSView(frame: NSRect(x: 0, y: 0, width: 170, height: 430))
+        sidebar.wantsLayer = true
+        sidebar.layer?.backgroundColor = SNTheme.headerPillBackground.cgColor
+        content.addSubview(sidebar)
+        let paneSpecs: [(String, String)] = [
+            ("gearshape", "General"),
+            ("paintpalette", "Appearance"),
+            ("list.bullet", "Editor"),
+            ("clock.arrow.circlepath", "Backups"),
+            ("command", "Shortcuts"),
+        ]
+        for (index, spec) in paneSpecs.enumerated() {
+            let button = NSButton(title: "  \(spec.1)",
+                                  image: NSImage(systemSymbolName: spec.0, accessibilityDescription: spec.1),
+                                  target: self, action: #selector(paneButtonClicked(_:)))
+            button.tag = index
+            button.bezelStyle = .inline
+            button.isBordered = false
+            button.alignment = .left
+            button.imagePosition = .imageLeading
+            button.font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            button.wantsLayer = true
+            button.layer?.cornerRadius = 6
+            button.frame = NSRect(x: 10, y: 430 - 52 - index * 34, width: 150, height: 28)
+            sidebar.addSubview(button)
+            sidebarButtons.append(button)
         }
-        func checkbox(_ title: String, y: CGFloat, action: Selector) -> NSButton {
-            let button = NSButton(checkboxWithTitle: title, target: self, action: action)
-            button.frame = NSRect(x: 20, y: y, width: 340, height: 20)
-            content.addSubview(button)
-            return button
+        let sidebarBorder = NSView(frame: NSRect(x: 169, y: 0, width: 1, height: 430))
+        sidebarBorder.wantsLayer = true
+        sidebarBorder.layer?.backgroundColor = SNTheme.hairline.cgColor
+        content.addSubview(sidebarBorder)
+
+        // Panes — ALL built before any refresh runs (see header note).
+        let paneFrame = NSRect(x: 170, y: 0, width: 450, height: 430)
+        paneViews = [buildGeneralPane(frame: paneFrame),
+                     buildAppearancePane(frame: paneFrame),
+                     buildEditorPane(frame: paneFrame),
+                     buildBackupsPane(frame: paneFrame),
+                     buildShortcutsPane(frame: paneFrame)]
+        for pane in paneViews {
+            pane.isHidden = true
+            content.addSubview(pane)
         }
 
-        _ = label("SilverNotes Settings", y: 306, bold: true)
-
-        _ = label("Dock panel to:", y: 276)
-        let sideControl = NSSegmentedControl(labels: ["Left", "Right"], trackingMode: .selectOne,
-                                             target: self, action: #selector(sideChanged(_:)))
-        sideControl.selectedSegment = Preferences.panelSide == .right ? 1 : 0
-        sideControl.frame = NSRect(x: 20, y: 248, width: 160, height: 24)
-        content.addSubview(sideControl)
-
-        let hotSide = checkbox("Hot Side — open the panel by holding the pointer at the screen edge",
-                               y: 216, action: #selector(hotSideChanged(_:)))
-        hotSide.state = Preferences.hotSideEnabled ? .on : .off
-
-        let markup = checkbox("Show Markdown markup (reveal **, ::, # while editing)",
-                              y: 190, action: #selector(markupChanged(_:)))
-        markup.state = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey) ? .on : .off
-
-        // The status label must exist BEFORE refreshLaunchAtLoginState()
-        // runs — the refresh writes statusLabel.stringValue in every
-        // branch, and the label is an implicitly unwrapped optional:
-        // refreshing first trapped on first open (v0.1.0–v0.2.0).
-        statusLabel = label("", y: 136)
-        statusLabel.textColor = SNTheme.secondaryText
-
-        launchAtLoginCheckbox = checkbox("Launch at login (starts hidden, panel closed)",
-                                         y: 164, action: #selector(launchAtLoginChanged(_:)))
-        refreshLaunchAtLoginState()
-
-        // Update row: one button that first checks, then — once a check
-        // has found a newer release — offers to install it.
-        updateButton = NSButton(title: "Check for Updates…", target: self,
-                                action: #selector(updateButtonClicked))
-        updateButton.bezelStyle = .rounded
-        updateButton.frame = NSRect(x: 20, y: 100, width: 168, height: 24)
-        content.addSubview(updateButton)
-
-        updateStatusLabel = NSTextField(labelWithString: "")
-        updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
-        updateStatusLabel.textColor = SNTheme.secondaryText
-        updateStatusLabel.frame = NSRect(x: 196, y: 103, width: 164, height: 18)
-        content.addSubview(updateStatusLabel)
-
-        _ = label("Toggle the panel from anywhere: Control + Option + Command + Space.", y: 62)
-        let version = label("SilverNotes v0.3.0 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
-        version.textColor = SNTheme.secondaryText
-        version.maximumNumberOfLines = 2
-        version.lineBreakMode = .byWordWrapping
-        version.frame = NSRect(x: 20, y: 8, width: 340, height: 34)
-
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 344),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 430),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "SilverNotes Settings"
         win.contentView = content
         win.delegate = self
         win.isReleasedWhenClosed = false
         window = win
+
+        selectPane(0)
+        // Refreshes run LAST, once every control they can touch exists.
+        refreshLaunchAtLoginState()
+        refreshBackupsPane()
+        refreshFontSizeLabel()
+    }
+
+    @objc private func paneButtonClicked(_ sender: NSButton) {
+        selectPane(sender.tag)
+    }
+
+    private func selectPane(_ index: Int) {
+        for (i, pane) in paneViews.enumerated() {
+            pane.isHidden = i != index
+        }
+        for (i, button) in sidebarButtons.enumerated() {
+            let selected = i == index
+            button.layer?.backgroundColor = selected ? SNTheme.accentFill.cgColor : NSColor.clear.cgColor
+            button.contentTintColor = selected ? .white : SNTheme.primaryText
+        }
+        if index == 3 { refreshBackupsPane() }
+    }
+
+    // MARK: Pane builders
+
+    /// Vertical space helpers for the frame-based panes (y measured
+    /// from the pane's bottom, as in AppKit).
+    private func paneLabel(_ text: String, in pane: NSView, y: CGFloat, bold: Bool = false, size: CGFloat = 12) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = bold ? NSFont.systemFont(ofSize: size, weight: .semibold) : NSFont.systemFont(ofSize: size)
+        field.textColor = SNTheme.primaryText
+        field.frame = NSRect(x: 24, y: y, width: 402, height: 18)
+        pane.addSubview(field)
+        return field
+    }
+
+    private func paneCheckbox(_ title: String, in pane: NSView, y: CGFloat, action: Selector) -> NSButton {
+        let button = NSButton(checkboxWithTitle: title, target: self, action: action)
+        button.frame = NSRect(x: 24, y: y, width: 402, height: 20)
+        pane.addSubview(button)
+        return button
+    }
+
+    private func paneTitle(_ text: String, in pane: NSView) {
+        let field = NSTextField(labelWithString: text)
+        field.font = NSFont.systemFont(ofSize: 14, weight: .bold)
+        field.textColor = SNTheme.primaryText
+        field.frame = NSRect(x: 24, y: 392, width: 402, height: 20)
+        pane.addSubview(field)
+    }
+
+    private func buildGeneralPane(frame: NSRect) -> NSView {
+        let pane = NSView(frame: frame)
+        paneTitle("General", in: pane)
+
+        // Created before refreshLaunchAtLoginState() can ever run —
+        // the refresh writes this label in every branch (v0.2.1 fix).
+        statusLabel = NSTextField(labelWithString: "")
+        statusLabel.font = NSFont.systemFont(ofSize: 12)
+        statusLabel.textColor = SNTheme.secondaryText
+        statusLabel.frame = NSRect(x: 24, y: 330, width: 402, height: 18)
+        pane.addSubview(statusLabel)
+
+        launchAtLoginCheckbox = paneCheckbox("Launch at login (starts hidden, panel closed)",
+                                             in: pane, y: 354, action: #selector(launchAtLoginChanged(_:)))
+
+        let hotSide = paneCheckbox("Hot Side — open the panel by holding the pointer at the screen edge",
+                                   in: pane, y: 302, action: #selector(hotSideChanged(_:)))
+        hotSide.state = Preferences.hotSideEnabled ? .on : .off
+
+        _ = paneLabel("Dock panel to (remembered per display):", in: pane, y: 272)
+        let sideControl = NSSegmentedControl(labels: ["Left", "Right"], trackingMode: .selectOne,
+                                             target: self, action: #selector(sideChanged(_:)))
+        let mainScreen = NSScreen.main ?? NSScreen.screens[0]
+        sideControl.selectedSegment = Preferences.effectivePanelSide(for: mainScreen) == .right ? 1 : 0
+        sideControl.frame = NSRect(x: 24, y: 244, width: 160, height: 24)
+        pane.addSubview(sideControl)
+
+        let pin = paneCheckbox("Pin panel open (disables click-outside hide)",
+                               in: pane, y: 210, action: #selector(pinChanged(_:)))
+        pin.state = Preferences.panelPinned ? .on : .off
+
+        _ = paneLabel("Panel width:", in: pane, y: 180)
+        let widthControl = NSSegmentedControl(labels: ["Standard", "Wide"], trackingMode: .selectOne,
+                                              target: self, action: #selector(widthChanged(_:)))
+        widthControl.selectedSegment = Preferences.panelWidth == .wide ? 1 : 0
+        widthControl.frame = NSRect(x: 24, y: 152, width: 160, height: 24)
+        pane.addSubview(widthControl)
+
+        _ = paneLabel("Licence", in: pane, y: 122, bold: true)
+        _ = paneLabel("$19.99 one-time, per major version · 30-day direct trial", in: pane, y: 102)
+
+        updateButton = NSButton(title: "Check for Updates…", target: self,
+                                action: #selector(updateButtonClicked))
+        updateButton.bezelStyle = .rounded
+        updateButton.frame = NSRect(x: 24, y: 62, width: 168, height: 24)
+        pane.addSubview(updateButton)
+
+        updateStatusLabel = NSTextField(labelWithString: "")
+        updateStatusLabel.font = NSFont.systemFont(ofSize: 11)
+        updateStatusLabel.textColor = SNTheme.secondaryText
+        updateStatusLabel.frame = NSRect(x: 200, y: 65, width: 226, height: 18)
+        pane.addSubview(updateStatusLabel)
+
+        let version = NSTextField(labelWithString: "SilverNotes v0.4.0")
+        version.font = NSFont.systemFont(ofSize: 11)
+        version.textColor = SNTheme.secondaryText
+        version.frame = NSRect(x: 24, y: 16, width: 402, height: 16)
+        pane.addSubview(version)
+        return pane
+    }
+
+    private func buildAppearancePane(frame: NSRect) -> NSView {
+        let pane = NSView(frame: frame)
+        paneTitle("Appearance", in: pane)
+
+        _ = paneLabel("Note colour shows as:", in: pane, y: 354)
+        let colorControl = NSSegmentedControl(labels: ["Full card", "Left bar"], trackingMode: .selectOne,
+                                              target: self, action: #selector(colorStyleChanged(_:)))
+        colorControl.selectedSegment = Preferences.colorStyle == .leftBar ? 1 : 0
+        colorControl.frame = NSRect(x: 24, y: 326, width: 200, height: 24)
+        pane.addSubview(colorControl)
+        let colorNote = paneLabel("Full card tints the whole note; Left bar keeps the card plain and draws the colour as a strip on its left edge.", in: pane, y: 288)
+        colorNote.textColor = SNTheme.secondaryText
+        colorNote.maximumNumberOfLines = 2
+        colorNote.lineBreakMode = .byWordWrapping
+        colorNote.frame = NSRect(x: 24, y: 282, width: 402, height: 32)
+
+        _ = paneLabel("Panel density:", in: pane, y: 238)
+        let densityControl = NSSegmentedControl(labels: ["Standard", "Compact"], trackingMode: .selectOne,
+                                                target: self, action: #selector(densityChanged(_:)))
+        densityControl.selectedSegment = Preferences.density == .compact ? 1 : 0
+        densityControl.frame = NSRect(x: 24, y: 210, width: 200, height: 24)
+        pane.addSubview(densityControl)
+        let densityNote = paneLabel("Compact turns note lists into one-line rows with a capture field and keyboard hints — a triage view at a narrower width.", in: pane, y: 162)
+        densityNote.textColor = SNTheme.secondaryText
+        densityNote.maximumNumberOfLines = 2
+        densityNote.lineBreakMode = .byWordWrapping
+        densityNote.frame = NSRect(x: 24, y: 156, width: 402, height: 32)
+        return pane
+    }
+
+    private func buildEditorPane(frame: NSRect) -> NSView {
+        let pane = NSView(frame: frame)
+        paneTitle("Editor", in: pane)
+
+        let markup = paneCheckbox("Show Markdown markup (reveal **, ::, # while editing)",
+                                  in: pane, y: 354, action: #selector(markupChanged(_:)))
+        markup.state = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey) ? .on : .off
+
+        _ = paneLabel("Body text size:", in: pane, y: 316)
+        fontSizeStepper = NSStepper()
+        fontSizeStepper.minValue = 11
+        fontSizeStepper.maxValue = 16
+        fontSizeStepper.increment = 0.5
+        fontSizeStepper.doubleValue = Preferences.bodyFontSize
+        fontSizeStepper.target = self
+        fontSizeStepper.action = #selector(fontSizeChanged(_:))
+        fontSizeStepper.frame = NSRect(x: 24, y: 288, width: 20, height: 24)
+        pane.addSubview(fontSizeStepper)
+        fontSizeLabel = NSTextField(labelWithString: "")
+        fontSizeLabel.font = NSFont.systemFont(ofSize: 12)
+        fontSizeLabel.textColor = SNTheme.primaryText
+        fontSizeLabel.frame = NSRect(x: 52, y: 290, width: 200, height: 18)
+        pane.addSubview(fontSizeLabel)
+        let note = paneLabel("Also adjustable in the panel with ⌘+ and ⌘−.", in: pane, y: 262)
+        note.textColor = SNTheme.secondaryText
+        return pane
+    }
+
+    private func buildBackupsPane(frame: NSRect) -> NSView {
+        let pane = NSView(frame: frame)
+        paneTitle("Backups", in: pane)
+
+        _ = paneLabel("SilverNotes snapshots its store as you work and keeps the 7 newest copies.", in: pane, y: 354)
+        backupsCountLabel = NSTextField(labelWithString: "")
+        backupsCountLabel.font = NSFont.systemFont(ofSize: 12)
+        backupsCountLabel.textColor = SNTheme.primaryText
+        backupsCountLabel.frame = NSRect(x: 24, y: 322, width: 402, height: 18)
+        pane.addSubview(backupsCountLabel)
+        backupsRecentLabel = NSTextField(labelWithString: "")
+        backupsRecentLabel.font = NSFont.systemFont(ofSize: 12)
+        backupsRecentLabel.textColor = SNTheme.primaryText
+        backupsRecentLabel.frame = NSRect(x: 24, y: 298, width: 402, height: 18)
+        pane.addSubview(backupsRecentLabel)
+
+        let openButton = NSButton(title: "Open Backups Folder", target: self, action: #selector(openBackupsFolder))
+        openButton.bezelStyle = .rounded
+        openButton.frame = NSRect(x: 24, y: 258, width: 180, height: 24)
+        pane.addSubview(openButton)
+        return pane
+    }
+
+    private func buildShortcutsPane(frame: NSRect) -> NSView {
+        let pane = NSView(frame: frame)
+        paneTitle("Shortcuts", in: pane)
+
+        let lines = """
+        Control + Option + Command + Space — show / hide the panel
+        Esc — close the toolbar, then the panel
+        ⌘+ / ⌘− — body text size up / down
+        ⌘F — search
+        ⌘N — new note
+
+        On the active note card:
+        ⌥⌘P — pin / unpin the note
+        ⌥⌘⏎ — fold / unfold the note
+        ⌥⌘1 / ⌥⌘2 / ⌥⌘3 — Standard / Plain Text / Code mode
+        Double-click a card's bottom strip — fold / unfold
+        Press and hold a card's bottom strip, then drag — reorder
+
+        In Compact density:
+        ↑ / ↓ — move between rows
+        ⏎ — open the selected row into its card
+        Return in the capture field — file the note
+        """
+        let field = NSTextField(labelWithString: lines)
+        field.font = NSFont.systemFont(ofSize: 12)
+        field.textColor = SNTheme.primaryText
+        field.maximumNumberOfLines = 0
+        field.lineBreakMode = .byWordWrapping
+        field.frame = NSRect(x: 24, y: 36, width: 402, height: 348)
+        pane.addSubview(field)
+        return pane
     }
 
     // MARK: Actions
 
     @objc private func sideChanged(_ sender: NSSegmentedControl) {
         let side: PanelSide = sender.selectedSegment == 1 ? .right : .left
-        UserDefaults.standard.set(side.rawValue, forKey: Preferences.panelSideKey)
+        // Per-display memory (audit 6.13): the segmented control sets
+        // the side for the display the panel lives on (the main
+        // display here); other displays keep their remembered side.
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        Preferences.setPanelSide(side, for: screen)
         PanelController.shared.sideDidChange()
     }
 
@@ -128,9 +367,59 @@ final class SettingsController: NSObject, NSWindowDelegate {
         PanelController.shared.hotSidePreferenceDidChange()
     }
 
+    @objc private func pinChanged(_ sender: NSButton) {
+        Preferences.panelPinned = sender.state == .on
+    }
+
+    @objc private func widthChanged(_ sender: NSSegmentedControl) {
+        Preferences.panelWidth = sender.selectedSegment == 1 ? .wide : .standard
+        PanelController.shared.panelWidthPreferenceDidChange()
+    }
+
+    @objc private func colorStyleChanged(_ sender: NSSegmentedControl) {
+        Preferences.colorStyle = sender.selectedSegment == 1 ? .leftBar : .fullCard
+        PanelController.shared.contentController.reload()
+    }
+
+    @objc private func densityChanged(_ sender: NSSegmentedControl) {
+        Preferences.density = sender.selectedSegment == 1 ? .compact : .standard
+        PanelController.shared.panelWidthPreferenceDidChange()
+    }
+
     @objc private func markupChanged(_ sender: NSButton) {
         UserDefaults.standard.set(sender.state == .on, forKey: Preferences.showMarkupKey)
         PanelController.shared.contentController.reload()
+    }
+
+    @objc private func fontSizeChanged(_ sender: NSStepper) {
+        Preferences.bodyFontSize = sender.doubleValue
+        refreshFontSizeLabel()
+        PanelController.shared.contentController.reload()
+    }
+
+    private func refreshFontSizeLabel() {
+        let size = Preferences.bodyFontSize
+        fontSizeLabel?.stringValue = size.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(size)) pt"
+            : String(format: "%.1f pt", size)
+    }
+
+    private func refreshBackupsPane() {
+        guard backupsCountLabel != nil, backupsRecentLabel != nil else { return }
+        let info = NoteStore.shared.backupInfo()
+        backupsCountLabel.stringValue = "Snapshots: \(info.count) of 7 kept"
+        if let recent = info.mostRecent {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            backupsRecentLabel.stringValue = "Most recent: \(formatter.string(from: recent))"
+        } else {
+            backupsRecentLabel.stringValue = "Most recent: none yet"
+        }
+    }
+
+    @objc private func openBackupsFolder() {
+        NSWorkspace.shared.open(NoteStore.shared.backupsDirectory)
     }
 
     private func refreshLaunchAtLoginState() {

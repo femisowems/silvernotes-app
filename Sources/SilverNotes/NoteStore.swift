@@ -11,11 +11,13 @@ import AppKit
 /// models are storage-agnostic, so migrating this document into SQLite later
 /// is a store-layer change only — no view or editor code depends on JSON.
 ///
-/// Attachments choice: every dropped file is copied (embedded) into the
-/// app's Attachments directory. The register's alternative — security-scoped
-/// bookmarks pointing at the original — was not chosen for the MVP because
-/// embedded copies can never go stale or break when the original moves.
-/// The trade-off (disk use) is documented in the README.
+/// Attachments choice (revised v0.4.0, audit 6.11): dropped IMAGES are
+/// copied (embedded) into the app's Attachments directory; dropped files
+/// of other kinds are LINKED — the attachment records the original path
+/// and no copy is made, per the design package's "linked, not copied —
+/// images are embedded" rule. A linked file that later moves renders a
+/// missing-file state on its card. Attachments embedded by earlier
+/// versions are untouched.
 final class NoteStore {
 
     static let shared = NoteStore()
@@ -146,6 +148,26 @@ final class NoteStore {
 
     func note(id: UUID) -> SNNote? { data.notes.first { $0.id == id } }
 
+    /// Every live note across all folders (the folder home's All Notes
+    /// view, audit 4.29): pinned first, then manual order.
+    var allNotes: [SNNote] {
+        data.notes
+            .filter { $0.deletedAt == nil }
+            .sorted { a, b in
+                if a.isPinned != b.isPinned { return a.isPinned }
+                return a.sortIndex < b.sortIndex
+            }
+    }
+
+    /// Every pinned live note (the folder home's Pinned view, audit 4.30).
+    var pinnedNotes: [SNNote] {
+        data.notes
+            .filter { $0.deletedAt == nil && $0.isPinned }
+            .sorted { $0.sortIndex < $1.sortIndex }
+    }
+
+    var pinnedNoteCount: Int { data.notes.filter { $0.deletedAt == nil && $0.isPinned }.count }
+
     func noteCount(in folderID: UUID) -> Int {
         data.notes.filter { $0.folderID == folderID && $0.deletedAt == nil }.count
     }
@@ -245,6 +267,37 @@ final class NoteStore {
         save()
     }
 
+    /// Fold/unfold a whole list at once (the bottom bar's fold-all
+    /// button, audit 4.37).
+    func setFolded(ids: [UUID], folded: Bool) {
+        let targets = Set(ids)
+        var changed = false
+        for i in data.notes.indices where targets.contains(data.notes[i].id) {
+            if data.notes[i].isFolded != folded {
+                data.notes[i].isFolded = folded
+                changed = true
+            }
+        }
+        if changed { save(); onStructuralChange?() }
+    }
+
+    /// Manual reorder (audit 6.14): the notes named in `ids` adopt the
+    /// given order by permuting their EXISTING sortIndex values among
+    /// themselves — the values' relationship to every other note (and
+    /// the pinned grouping the caller preserves) is untouched. The
+    /// schema needed no new field: sortIndex has been the manual-order
+    /// field since v0.1.0, and existing stores already carry a value
+    /// for every note from its current sort.
+    func assignOrder(ids: [UUID]) {
+        let indices = ids.compactMap { id in data.notes.firstIndex(where: { $0.id == id }) }
+        guard indices.count == ids.count, indices.count > 1 else { return }
+        let values = indices.map { data.notes[$0].sortIndex }.sorted()
+        for (position, index) in indices.enumerated() {
+            data.notes[index].sortIndex = values[position]
+        }
+        save(); onStructuralChange?()
+    }
+
     // MARK: Trash (Decision 1: 30-day retention)
 
     func moveToTrash(id: UUID) {
@@ -295,12 +348,49 @@ final class NoteStore {
         data.notes.removeAll { expiredIDs.contains($0.id) }
     }
 
-    // MARK: Attachments (embedded copies)
+    // MARK: Backups (surfaced read-only in Settings → Backups, audit 4.52)
 
-    /// Copies the file at `url` into Attachments/<noteID>/ and records it.
+    /// (snapshot count, most recent snapshot date) for the Backups pane.
+    func backupInfo() -> (count: Int, mostRecent: Date?) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: backupsDirectory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        var mostRecent: Date?
+        for file in files {
+            if let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                if mostRecent == nil || date > mostRecent! { mostRecent = date }
+            }
+        }
+        return (files.count, mostRecent)
+    }
+
+    // MARK: Attachments (images embedded; other files linked — audit 6.11)
+
+    private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "tiff", "bmp", "webp"]
+
+    /// Records the file at `url` on a note. Images are still COPIED into
+    /// Attachments/<noteID>/ (embedded, with a thumbnail); every other
+    /// file is LINKED — the attachment records the original's path and
+    /// no copy is made (audit 6.11). `origin` is the provenance label
+    /// for the meta line (audit 4.25), recorded at capture time.
     @discardableResult
-    func addAttachment(noteID: UUID, from url: URL) -> SNAttachment? {
+    func addAttachment(noteID: UUID, from url: URL, origin: String? = nil) -> SNAttachment? {
         guard let i = data.notes.firstIndex(where: { $0.id == noteID }) else { return nil }
+        let isImage = NoteStore.imageExtensions.contains(url.pathExtension.lowercased())
+
+        if !isImage {
+            let attachment = SNAttachment(
+                fileName: url.lastPathComponent,
+                relativePath: "",
+                isImage: false,
+                origin: origin,
+                linkedPath: url.path
+            )
+            data.notes[i].attachments.append(attachment)
+            data.notes[i].updatedAt = Date()
+            save(); onStructuralChange?()
+            return attachment
+        }
+
         let noteDir = attachmentsDirectory.appendingPathComponent(noteID.uuidString, isDirectory: true)
         try? FileManager.default.createDirectory(at: noteDir, withIntermediateDirectories: true)
 
@@ -316,15 +406,13 @@ final class NoteStore {
         } catch {
             return nil
         }
-        let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "tiff", "bmp", "webp"]
         let attachment = SNAttachment(
             fileName: url.lastPathComponent,
             relativePath: "\(noteID.uuidString)/\(destination.lastPathComponent)",
-            isImage: imageExtensions.contains(url.pathExtension.lowercased())
+            isImage: true,
+            origin: origin
         )
-        if attachment.isImage {
-            makeThumbnail(for: attachment)
-        }
+        makeThumbnail(for: attachment)
         data.notes[i].attachments.append(attachment)
         data.notes[i].updatedAt = Date()
         save(); onStructuralChange?()
@@ -341,7 +429,17 @@ final class NoteStore {
     }
 
     func attachmentURL(_ attachment: SNAttachment) -> URL {
-        attachmentsDirectory.appendingPathComponent(attachment.relativePath)
+        if let linked = attachment.linkedPath {
+            return URL(fileURLWithPath: linked)
+        }
+        return attachmentsDirectory.appendingPathComponent(attachment.relativePath)
+    }
+
+    /// Whether the attachment's file is actually there. A linked file
+    /// can be moved or deleted after the drop; its card renders a
+    /// missing-file state instead of a dead link (audit 6.11).
+    func attachmentFileExists(_ attachment: SNAttachment) -> Bool {
+        FileManager.default.fileExists(atPath: attachmentURL(attachment).path)
     }
 
     /// Downscaled preview written beside an image attachment when it is
@@ -375,6 +473,9 @@ final class NoteStore {
     }
 
     private func removeAttachmentFile(_ attachment: SNAttachment) {
+        // A linked attachment's file belongs to the user, not the store:
+        // removing the attachment never touches the original.
+        guard !attachment.isLinked else { return }
         try? FileManager.default.removeItem(at: attachmentURL(attachment))
         try? FileManager.default.removeItem(at: thumbnailURL(for: attachment))
     }

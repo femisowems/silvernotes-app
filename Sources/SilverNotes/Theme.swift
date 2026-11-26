@@ -59,10 +59,12 @@ enum SNTheme {
                 dark: hex(0x3A3A40, alpha: 0.90))
     }
 
-    /// Circular icon buttons inside the header pill.
+    /// Circular icon buttons inside the header pill. The design package
+    /// gives the wash as rgba(120,120,135,0.14) with no dark override
+    /// (audit 2.24), so both appearances use it.
     static var pillButtonBackground: NSColor {
         dynamic(light: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.14),
-                dark: NSColor(calibratedWhite: 1, alpha: 0.12))
+                dark: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.14))
     }
 
     /// Hover wash for footer buttons.
@@ -81,17 +83,84 @@ enum SNTheme {
                 dark: hex(0x9A9AA3))
     }
 
+    /// Body copy as rendered in the package's notes (`.note p`) — a step
+    /// softer than the primary token, which titles/headings keep (2.8).
+    static var bodyText: NSColor {
+        dynamic(light: hex(0x333338),
+                dark: hex(0xD7D7DD))
+    }
+
+    /// Tertiary text: folder counts, progress labels, menu shortcuts,
+    /// done-task text. The package uses #8E8E96 in both appearances (3.9).
+    static var tertiaryText: NSColor { hex(0x8E8E96) }
+
+    /// Card footer text and icons (`.note-foot`, audit 2.10).
+    static var footerText: NSColor {
+        dynamic(light: hex(0x7A7A83),
+                dark: hex(0x9D9DA7))
+    }
+
+    /// Link colour for note links and the file card's Quick Look row
+    /// (audit 2.22) — the same in both appearances.
+    static var link: NSColor { hex(0x2C6FBB) }
+
+    /// The Open Bar's chevron colour (audit 2.26).
+    static var sliverIcon: NSColor {
+        dynamic(light: hex(0x55565E),
+                dark: hex(0xC9C9D1))
+    }
+
+    /// Custom gear-menu surfaces (audit 2.27): near-opaque, blurred.
+    static var gearMenuBackground: NSColor {
+        dynamic(light: NSColor(srgbRed: 250/255, green: 250/255, blue: 252/255, alpha: 0.96),
+                dark: NSColor(srgbRed: 44/255, green: 44/255, blue: 50/255, alpha: 0.97))
+    }
+
+    static var gearMenuBorder: NSColor {
+        dynamic(light: NSColor(calibratedRed: 0.24, green: 0.24, blue: 0.27, alpha: 0.14),
+                dark: NSColor(calibratedWhite: 1, alpha: 0.12))
+    }
+
+    static var gearMenuText: NSColor {
+        dynamic(light: hex(0x26262B),
+                dark: hex(0xEEEEF2))
+    }
+
+    /// Row hover wash inside the custom gear menu.
+    static var gearMenuHover: NSColor { hex(0x3F6EA5, alpha: 0.14) }
+
+    /// Hairline separators inside the custom gear menu.
+    static var gearMenuSeparator: NSColor {
+        NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.22)
+    }
+
+    /// Checklist tick ring for an open task (audit 4.19).
+    static var taskRing: NSColor { hex(0xB9B9C2) }
+
+    /// Progress-bar track (audit 4.22).
+    static var progressTrack: NSColor {
+        NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.20)
+    }
+
+    /// Empty-state icon tile wash (audit 4.40).
+    static var emptyTileBackground: NSColor {
+        NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.13)
+    }
+
+    /// The flat accent fill of the empty state's New Note button (4.43):
+    /// the package draws #3F6EA5 in both appearances.
+    static var accentFill: NSColor { hex(0x3F6EA5) }
+
     /// Steel accent (links, focus ring, New Note, folder glyphs).
     static var accent: NSColor {
         dynamic(light: hex(0x3F6EA5),
                 dark: hex(0x7AA7D9))
     }
 
-    /// The accent at ring strength, for the focused card's border.
-    static var accentRing: NSColor {
-        dynamic(light: hex(0x3F6EA5, alpha: 0.55),
-                dark: hex(0x7AA7D9, alpha: 0.55))
-    }
+    /// The focus ring: 2 pt, #3F6EA5 @ 0.55 in BOTH appearances
+    /// (audit 2.6 — the dark appearance does not switch to the light
+    /// steel). Drawn at 2 pt by the card while editing.
+    static var accentRing: NSColor { hex(0x3F6EA5, alpha: 0.55) }
 
     /// The accent as a soft tile wash (folder-row icon tiles).
     static var accentSoftBackground: NSColor {
@@ -113,10 +182,9 @@ enum SNTheme {
                 dark: NSColor(calibratedWhite: 1, alpha: 0.10))
     }
 
-    static var taskDone: NSColor {
-        dynamic(light: hex(0x34C759),
-                dark: hex(0x4BE07A))
-    }
+    /// Task green — the package's rule is the same in both appearances
+    /// (audit 2.15).
+    static var taskDone: NSColor { hex(0x34C759) }
 
     /// The Open Bar (collapsed sliver) surface and edge.
     static var sliverBackground: NSColor {
@@ -176,13 +244,17 @@ enum SNTheme {
 
     // MARK: Fonts
 
-    // Fonts are immutable value objects handed out on every render pass;
-    // build each one once instead of re-creating it per access.
-    static let bodyFont: NSFont = NSFont.systemFont(ofSize: 13)
-    /// First line of a note — its title (also the folded card's label).
-    static let titleFont: NSFont = NSFont.systemFont(ofSize: 13.5, weight: .semibold)
-    static let boldBodyFont: NSFont = NSFont.systemFont(ofSize: 13, weight: .bold)
+    // The body size is a user preference (audit 3.14: ⌘+ / ⌘−, default
+    // 12.5 per the rendered package, audit 3.1), so the body-derived
+    // fonts are computed from it rather than fixed lets.
+    static var bodyFont: NSFont { NSFont.systemFont(ofSize: CGFloat(Preferences.bodyFontSize)) }
+    /// First line of a note — its title (also the folded card's label):
+    /// body + 1 pt at weight 700 (audit 3.3, 3.4).
+    static var titleFont: NSFont { NSFont.systemFont(ofSize: CGFloat(Preferences.bodyFontSize) + 1, weight: .bold) }
+    static var boldBodyFont: NSFont { NSFont.systemFont(ofSize: CGFloat(Preferences.bodyFontSize), weight: .bold) }
     static let codeFont: NSFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// Inline `code` chips render a step smaller than block code (3.12).
+    static let inlineCodeFont: NSFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     private static let headingFonts: [NSFont] = [
         NSFont.systemFont(ofSize: 17, weight: .bold),
         NSFont.systemFont(ofSize: 15, weight: .semibold),
@@ -197,6 +269,13 @@ enum SNTheme {
     static let bodyParagraphStyle: NSParagraphStyle = {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = 1.5
+        return style
+    }()
+
+    /// The title line runs tighter than the body: 1.3 (audit 3.5).
+    static let titleParagraphStyle: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = 1.3
         return style
     }()
 }

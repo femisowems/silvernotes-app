@@ -33,10 +33,21 @@ final class NoteTextView: NSTextView {
 
     /// Plain initializer used by NoteCardView; NSTextView does not inherit
     /// a no-argument initializer once init(frame:textContainer:) is overridden.
+    /// Builds the text stack by hand so the layout manager is the custom
+    /// SNLayoutManager (marker-band highlights + drawn checklist ticks).
     init() {
-        super.init(frame: .zero, textContainer: nil)
+        let storage = NSTextStorage()
+        let layoutManager = SNLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+        super.init(frame: .zero, textContainer: container)
         commonSetup()
     }
+
+    /// The custom layout manager, when this view was built with one.
+    var snLayoutManager: SNLayoutManager? { layoutManager as? SNLayoutManager }
 
     override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
         super.init(frame: frameRect, textContainer: container)
@@ -75,7 +86,7 @@ final class NoteTextView: NSTextView {
             // included) so freshly typed text doesn't jump when the
             // debounced re-render lands.
             typingAttributes = [.font: SNTheme.bodyFont,
-                                .foregroundColor: SNTheme.primaryText,
+                                .foregroundColor: SNTheme.bodyText,
                                 .paragraphStyle: SNTheme.bodyParagraphStyle]
             isAutomaticQuoteSubstitutionEnabled = false
             isAutomaticDashSubstitutionEnabled = false
@@ -99,12 +110,20 @@ final class NoteTextView: NSTextView {
         guard !hasMarkedText(), let storage = textStorage else { return }
         let result = MarkdownEngine.render(source: string, mode: mode, showMarkup: showMarkup)
         taskMarkers = result.tasks
+        // Hand the draw-pass data to the layout manager: drawn ticks only
+        // in Standard mode with markup hidden (with markup shown the
+        // marker stays literal); highlight bands in Standard mode.
+        if let layoutManager = snLayoutManager {
+            layoutManager.tickMarkers = (mode == .standard && !showMarkup) ? result.tasks : []
+            layoutManager.highlightRanges = mode == .standard ? result.highlightRanges : []
+            layoutManager.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: storage.length))
+        }
         let selection = selectedRange()
         storage.beginEditing()
         // Copy attributes run-by-run from the rendered copy onto our storage.
         // Characters are identical, so this is a pure attribute pass.
         let full = NSRange(location: 0, length: storage.length)
-        storage.setAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText], range: full)
+        storage.setAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.bodyText], range: full)
         result.attributed.enumerateAttributes(in: full, options: []) { attrs, range, _ in
             storage.addAttributes(attrs, range: range)
         }

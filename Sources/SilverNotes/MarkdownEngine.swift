@@ -14,6 +14,9 @@ struct TaskMarker {
 struct MarkdownRenderResult {
     let attributed: NSAttributedString
     let tasks: [TaskMarker]
+    /// Source ranges wrapped in ::highlight:: — drawn as a marker band
+    /// by the layout manager (audit 2.13), not as a background attribute.
+    let highlightRanges: [NSRange]
 }
 
 /// Hidden-Markdown renderer for SilverNotes v0.1.0 (Standard mode).
@@ -40,21 +43,25 @@ enum MarkdownEngine {
 
         switch mode {
         case .plain:
-            attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText,
+            attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.bodyText,
                                 .paragraphStyle: SNTheme.bodyParagraphStyle], range: full)
             if let titleRange = firstContentLineRange(in: source) {
-                attr.addAttributes([.font: SNTheme.titleFont], range: titleRange)
+                attr.addAttributes([.font: SNTheme.titleFont, .foregroundColor: SNTheme.primaryText,
+                                    .paragraphStyle: SNTheme.titleParagraphStyle], range: titleRange)
             }
-            return MarkdownRenderResult(attributed: attr, tasks: [])
+            return MarkdownRenderResult(attributed: attr, tasks: [], highlightRanges: [])
         case .code:
             attr.addAttributes([.font: SNTheme.codeFont, .foregroundColor: SNTheme.primaryText], range: full)
-            return MarkdownRenderResult(attributed: attr, tasks: [])
+            return MarkdownRenderResult(attributed: attr, tasks: [], highlightRanges: [])
         case .standard:
             break
         }
 
-        attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText,
+        // Body copy renders in the package's body colour (audit 2.8);
+        // titles and headings keep the primary token.
+        attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.bodyText,
                             .paragraphStyle: SNTheme.bodyParagraphStyle], range: full)
+        var highlights: [NSRange] = []
 
         // The note's first content line is its title (design package):
         // styled inside this same pass — a heading on that line wins.
@@ -94,8 +101,9 @@ enum MarkdownEngine {
                 conceal(attr, range: NSRange(location: lineStart + leadingSpaces, length: markerLength),
                         showMarkup: showMarkup)
                 if contentRange.length > 0 {
-                    attr.addAttributes([.font: SNTheme.headingFont(level: heading)], range: contentRange)
-                    applyInline(attr, ns: ns, range: contentRange, showMarkup: showMarkup)
+                    attr.addAttributes([.font: SNTheme.headingFont(level: heading),
+                                        .foregroundColor: SNTheme.primaryText], range: contentRange)
+                    applyInline(attr, ns: ns, range: contentRange, showMarkup: showMarkup, highlights: &highlights)
                 }
             } else if let task = parseTaskLine(line: line, lineRange: lineRange, lineStart: lineStart,
                                                 leadingSpaces: leadingSpaces) {
@@ -105,28 +113,32 @@ enum MarkdownEngine {
                                            length: max(0, lineStart + lineLength - task.contentStart))
                 if contentRange.length > 0 {
                     if task.marker.isChecked {
-                        attr.addAttributes([.foregroundColor: SNTheme.secondaryText], range: contentRange)
+                        // Done tasks read tertiary + struck through (4.20).
+                        attr.addAttributes([.foregroundColor: SNTheme.tertiaryText,
+                                            .strikethroughStyle: NSUnderlineStyle.single.rawValue],
+                                           range: contentRange)
                     }
-                    applyInline(attr, ns: ns, range: contentRange, showMarkup: showMarkup)
+                    applyInline(attr, ns: ns, range: contentRange, showMarkup: showMarkup, highlights: &highlights)
                 }
             } else if trimmed.hasPrefix(">") {
                 let markerRange = NSRange(location: lineStart + leadingSpaces, length: 1)
                 conceal(attr, range: markerRange, showMarkup: showMarkup)
                 attr.addAttributes([.foregroundColor: SNTheme.secondaryText,
                                     .font: italicFont()], range: lineRange)
-                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup)
+                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup, highlights: &highlights)
             } else if isListLine(trimmed) {
-                // Keep the bullet/number visible but tint it; inline-format the rest.
-                attr.addAttributes([.foregroundColor: SNTheme.primaryText], range: lineRange)
+                // Keep the bullet/number visible; inline-format the rest.
                 if titleRange?.location == lineStart {
-                    attr.addAttributes([.font: SNTheme.titleFont], range: lineRange)
+                    attr.addAttributes([.font: SNTheme.titleFont, .foregroundColor: SNTheme.primaryText,
+                                        .paragraphStyle: SNTheme.titleParagraphStyle], range: lineRange)
                 }
-                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup)
+                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup, highlights: &highlights)
             } else {
                 if titleRange?.location == lineStart {
-                    attr.addAttributes([.font: SNTheme.titleFont], range: lineRange)
+                    attr.addAttributes([.font: SNTheme.titleFont, .foregroundColor: SNTheme.primaryText,
+                                        .paragraphStyle: SNTheme.titleParagraphStyle], range: lineRange)
                 }
-                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup)
+                applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup, highlights: &highlights)
             }
 
             if newlineRange.location == NSNotFound { break }
@@ -134,7 +146,7 @@ enum MarkdownEngine {
             if lineStart > totalLength { break }
         }
 
-        return MarkdownRenderResult(attributed: attr, tasks: tasks)
+        return MarkdownRenderResult(attributed: attr, tasks: tasks, highlightRanges: highlights)
     }
 
     // MARK: Line classification
@@ -197,22 +209,31 @@ enum MarkdownEngine {
     }
 
     private static func styleTaskLine(_ attr: NSMutableAttributedString, task: TaskLineInfo, showMarkup: Bool) {
-        // Conceal "- [" and "]" so the remaining character reads as a checkbox
-        // glyph in a tinted box; with markup shown, leave the marker literal.
-        if !showMarkup {
-            let dashRange = NSRange(location: task.marker.markerRange.location, length: 3)
-            let closeRange = NSRange(location: task.marker.markerRange.location + 4, length: 1)
-            conceal(attr, range: dashRange, showMarkup: false)
-            conceal(attr, range: closeRange, showMarkup: false)
+        // With markup shown, the marker stays literal — the old tinted
+        // cell treatment, and the layout manager draws no tick.
+        if showMarkup {
+            let checked = task.marker.isChecked
+            attr.addAttributes([
+                .font: SNTheme.boldBodyFont,
+                .foregroundColor: checked ? NSColor.white : SNTheme.secondaryText,
+                .backgroundColor: checked ? SNTheme.taskDone : SNTheme.codeBackground
+            ], range: task.marker.checkboxCharRange)
+            return
         }
-        let checked = task.marker.isChecked
-        // Done reads as a white tick on the task green; open is a quiet
-        // glyph on the code tint (attribute-only: the glyph is the literal
-        // source character in its tinted cell).
+        // Conceal "- [" and "]", and make the checkbox character itself
+        // invisible: the layout manager's draw pass paints the package's
+        // round tick (15×15 ring / green fill + white check, audit 4.19)
+        // over its cell. The kern after the character leaves room for
+        // the drawn circle before the task text starts. Source text and
+        // offsets are untouched, as everywhere in this engine.
+        let dashRange = NSRange(location: task.marker.markerRange.location, length: 3)
+        let closeRange = NSRange(location: task.marker.markerRange.location + 4, length: 1)
+        conceal(attr, range: dashRange, showMarkup: false)
+        conceal(attr, range: closeRange, showMarkup: false)
         attr.addAttributes([
             .font: SNTheme.boldBodyFont,
-            .foregroundColor: checked ? NSColor.white : SNTheme.secondaryText,
-            .backgroundColor: checked ? SNTheme.taskDone : SNTheme.codeBackground
+            .foregroundColor: NSColor.clear,
+            .kern: 7.0
         ], range: task.marker.checkboxCharRange)
     }
 
@@ -221,7 +242,7 @@ enum MarkdownEngine {
     /// Scans `range` for paired inline markers. Only complete pairs are
     /// styled; anything unclosed is left literal. Inline code spans are
     /// consumed first so markers inside them are never interpreted.
-    private static func applyInline(_ attr: NSMutableAttributedString, ns: NSString, range: NSRange, showMarkup: Bool) {
+    private static func applyInline(_ attr: NSMutableAttributedString, ns: NSString, range: NSRange, showMarkup: Bool, highlights: inout [NSRange]) {
         var i = range.location
         let end = range.location + range.length
 
@@ -233,7 +254,7 @@ enum MarkdownEngine {
                 if let close = findChar(ns, char: 0x60, from: i + 1, to: end) {
                     let inner = NSRange(location: i + 1, length: close - i - 1)
                     if inner.length > 0 {
-                        attr.addAttributes([.font: SNTheme.codeFont,
+                        attr.addAttributes([.font: SNTheme.inlineCodeFont,
                                             .backgroundColor: SNTheme.codeBackground], range: inner)
                     }
                     conceal(attr, range: NSRange(location: i, length: 1), showMarkup: showMarkup)
@@ -246,7 +267,7 @@ enum MarkdownEngine {
             // Link: [text](url)
             if ch == 0x5B { // [
                 if let parsed = parseLink(ns, at: i, to: end) {
-                    attr.addAttributes([.foregroundColor: SNTheme.accent,
+                    attr.addAttributes([.foregroundColor: SNTheme.link,
                                         .underlineStyle: NSUnderlineStyle.single.rawValue,
                                         .link: parsed.url], range: parsed.textRange)
                     conceal(attr, range: NSRange(location: i, length: 1), showMarkup: showMarkup)
@@ -260,9 +281,9 @@ enum MarkdownEngine {
 
             // Paired markers, longest first.
             if let pair = matchPair(ns, at: i, to: end) {
-                stylePair(attr, pair: pair, showMarkup: showMarkup)
+                stylePair(attr, pair: pair, showMarkup: showMarkup, highlights: &highlights)
                 // Recurse into the content so **bold with *italic* inside** works.
-                applyInline(attr, ns: ns, range: pair.contentRange, showMarkup: showMarkup)
+                applyInline(attr, ns: ns, range: pair.contentRange, showMarkup: showMarkup, highlights: &highlights)
                 i = pair.contentRange.location + pair.contentRange.length + pair.markerLength
                 continue
             }
@@ -317,7 +338,7 @@ enum MarkdownEngine {
         return nil
     }
 
-    private static func stylePair(_ attr: NSMutableAttributedString, pair: PairMatch, showMarkup: Bool) {
+    private static func stylePair(_ attr: NSMutableAttributedString, pair: PairMatch, showMarkup: Bool, highlights: inout [NSRange]) {
         let openRange = NSRange(location: pair.contentRange.location - pair.markerLength, length: pair.markerLength)
         let closeRange = NSRange(location: pair.contentRange.location + pair.contentRange.length, length: pair.markerLength)
         conceal(attr, range: openRange, showMarkup: showMarkup)
@@ -333,7 +354,10 @@ enum MarkdownEngine {
         case "==":
             attr.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue], range: pair.contentRange)
         case "::":
-            attr.addAttributes([.backgroundColor: SNTheme.highlightBackground], range: pair.contentRange)
+            // No background attribute: the range is collected and the
+            // layout manager draws the marker band behind the text
+            // (audit 2.13).
+            highlights.append(pair.contentRange)
         default:
             break
         }
