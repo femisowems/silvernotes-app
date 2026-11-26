@@ -43,7 +43,10 @@ nothing ever leaves the machine.
 > The MVP is **confirmed working** on a real Mac (MacBook Air,
 > macOS 26) as of November 25, 2026 — with a few first-use bugs,
 > which are tracked in [ROADMAP.md](ROADMAP.md).
-> v0.4.0 itself is CI-built and awaiting its on-device confirmation
+> v0.5.0 was installed and used on a real Mac on November 26, 2026,
+> via the app's own Check for Updates — the self-update path
+> confirmed working end to end. v0.5.1 and v0.6.0 are CI-built;
+> their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
 > Nothing below claims a feature "works" beyond what the code does;
@@ -88,10 +91,13 @@ nothing ever leaves the machine.
 - **Click outside to dismiss** — with an allow-list: while a menu,
   popover, share picker, save panel, alert, or the Settings window is
   open, auto-hide is suspended so the panel never vanishes mid-action.
-- **Pin it open** — the header pin (or Settings) disables auto-hide when
-  you want the panel to stay put.
-- **Esc closes innermost-first** — formatting toolbar, then text
-  selection, then the panel.
+- **Pin it open** — pin the panel open from Settings → General or
+  the bottom-bar overflow menu; pinning disables auto-hide when you
+  want the panel to stay put. (There is no header pin.)
+- **Esc closes the panel in one press** — a deliberate deviation
+  from the design package, made at the user's direction: Esc does
+  not ladder through the formatting toolbar or the text selection
+  first.
 - **Focus is borrowed, not stolen** — the app you were in is remembered
   and re-activated when the panel hides.
 - **Hides on screen lock**, always. Notes never stay exposed on a locked
@@ -110,7 +116,7 @@ nothing ever leaves the machine.
   a folder sends its notes to the Trash — it never destroys them.
 - **Card stack** — notes are cards in a scrolling column; a new note
   lands at the **top**, already focused. Header carries back, folder
-  title, search, +, and the panel pin.
+  title, search, and +.
 - **Search across all folders**, title matches first, then body matches.
 - **Per-note footer on every card** — **Aa** (formatting popover), pin,
   gear menu, timestamp, share (`NSSharingServicePicker`), trash.
@@ -141,9 +147,10 @@ nothing ever leaves the machine.
   ordinary undoable source edit); the card footer shows done/total
   progress.
 - **Floating formatting toolbar** on any selection — Bold, Italic,
-  Highlight, Strikethrough, Code, Link, Task — every action implemented
-  as a source edit, so nothing the toolbar does can be erased by the
-  next render pass.
+  Underline, Strikethrough, Highlight (a yellow chip), Link,
+  Checklist, Inline Code — every action implemented as a source
+  edit, so nothing the toolbar does can be erased by the next
+  render pass.
 - **IME-safe** — rendering suspends while composed (marked) text is
   active and re-applies on commit. Non-negotiable for CJK input.
 - **Paste is always plain text** — what lands is the text you copied,
@@ -155,12 +162,17 @@ nothing ever leaves the machine.
 ### Files in notes
 
 - Drag any file onto a card (or drag to the edge to reveal the panel,
-  then drop): the file is **copied into** the app's Attachments folder
-  and shown as a preview card — thumbnail for images, Finder icon for
-  everything else. Click a preview to open the copy.
-- Embedded copies are a deliberate choice over security-scoped
-  bookmarks: a note can never break because the original file moved.
-  The cost is disk use, and it is stated here rather than hidden.
+  then drop) and it appears as a file card above the note text, with
+  an "Open in Quick Look" row. The rule since v0.4.0: dropped
+  **images are embedded** — copied into the app's Attachments
+  folder, so an image card can never break because the original
+  moved — while dropped **files of other kinds are linked**: the
+  card records the original's path and no copy is made.
+- The linked half of that rule has an honest cost: if a linked
+  original moves or is deleted, its card renders a missing-file
+  state instead of the file. Embedding everything would avoid that
+  but duplicate every dropped file on disk; the split is stated
+  here rather than hidden.
 
 ### Trash
 
@@ -180,14 +192,22 @@ nothing ever leaves the machine.
 ```bash
 git clone https://github.com/femisowems/silvernotes-app.git
 cd silvernotes-app
-./build-app.sh   # builds the release binary and assembles dist/SilverNotes.app
+./build-app.sh   # runs the tests, then builds the release binary and assembles dist/SilverNotes.app
 ```
 
-`build-app.sh` runs `swift build -c release`, wraps the binary in a
-`SilverNotes.app` bundle (bundle id `io.starterdev.silvernotes`,
-`LSUIElement`, minimum macOS 13.0, app icon included), and ad-hoc
-codesigns it. Or open `Package.swift` in Xcode and press ⌘R — the
-package has **zero dependencies** to resolve.
+`build-app.sh` first runs the test suite (`swift test`) and
+**aborts the build if any test fails**; only then does it run
+`swift build -c release`, wrap the binary in a `SilverNotes.app`
+bundle (bundle id `io.starterdev.silvernotes`, `LSUIElement`,
+minimum macOS 13.0, app icon included), and ad-hoc codesign it.
+Or open `Package.swift` in Xcode and press ⌘R — the package has
+**zero dependencies** to resolve.
+
+The test suite (`Tests/SilverNotesTests/`, 19 XCTest cases) covers
+the store (counts, lifecycle, persistence), the Markdown engine's
+render invariants, and list population — the panel controller
+driven headlessly, asserting the card stack actually fills. It
+runs in CI on every build, ahead of the app build itself.
 
 > **Restoring from this repo:** the icon binaries (`AppIcon.icns`, the
 > icon source PNGs) are stored as base64 text (`*.b64`) because the
@@ -208,9 +228,14 @@ package has **zero dependencies** to resolve.
    that it starts hidden: look for the **thin sliver at the right edge
    of your screen, mid-height**, and the **note icon in the menu bar**.
 
-**Updating:** quit the old copy (`pkill -x SilverNotes` works), replace
-the app in Applications with the new build, launch it. Your notes are
-not inside the app — they live in Application Support (below) and are
+**Updating:** use **Check for Updates** (in Settings, or the
+menu-bar menu) — it downloads the new release, verifies its
+SHA-256 against the digest GitHub publishes, swaps the app bundle
+with a backup that rolls back if the swap fails, and relaunches.
+The manual route still works as a fallback: quit the old copy
+(`pkill -x SilverNotes` works), replace the app in Applications
+with the new build, launch it. Either way, your notes are not
+inside the app — they live in Application Support (below) and are
 untouched by replacing the app.
 
 ## How to use it
@@ -224,21 +249,22 @@ untouched by replacing the app.
 | **Right-click the menu-bar icon** | Menu: New Note, Hot Side, dock side, Settings, Quit |
 | **Double-click the app** (already running) | Show the panel |
 | **Click outside the panel** | Hide it (unless pinned open) |
-| **Esc** (panel open) | Close toolbar → clear selection → hide panel |
+| **Esc** (panel open) | Hide the panel (one press) |
 | **⌘N** (app focused) | New note |
 | **⌥⌘P** (editing a card) | Pin / unpin the note |
 | **⌥⌘⏎** (editing a card) | Fold / unfold the note |
 | **Double-click a card's footer strip** | Fold / unfold that note |
 | **⌥⌘1 / ⌥⌘2 / ⌥⌘3** | Note mode: Standard / Plain Text / Code |
-| **Drag a file onto a card** | Embed a copy of the file in the note |
+| **Drag a file onto a card** | Add a file card — images are embedded, other files linked |
 | **Click a task's checkbox glyph** | Tick / untick the task |
 | **⌘,** | Open Settings |
 
 ### Good to know
 
 - **The panel's width is a proportion, not a preference** — ~34% of
-  your screen, clamped between 300 and 560 pt. Drag-resizing and a
-  Wide (~48%) step are planned, not built.
+  your screen, clamped between 300 and 560 pt. A Wide (~48%) step
+  is built (Settings → Appearance); resizing by dragging the
+  panel's edge remains planned, not built.
 - **Modes never rewrite your text.** Standard, Plain, and Code are
   renderings of one stored source. Switch freely; the bytes do not
   change.
@@ -256,9 +282,14 @@ untouched by replacing the app.
   conflicted-copy strategy designed before it ships, not after.
 - **iOS companion** — planned as a companion for Mac owners; the Mac
   app is the product, the phone app is the satellite.
-- **Drag-resize + Wide step**, folder/note drag-reorder, per-display
-  dock-side memory, bulk export, HTML→Markdown paste conversion, a
-  dedicated VoiceOver audit, syntax highlighting in code blocks.
+- **Edge drag-resize** — dragging the panel's screen-away edge to
+  resize it, alongside the built Standard and Wide steps.
+- **Folder drag-reorder** — notes already reorder by dragging;
+  folders do not yet.
+- **Bulk export/import** — a whole library out (and back in) in one
+  action, beyond the per-note Markdown export.
+- **HTML→Markdown paste conversion**, a dedicated **VoiceOver
+  audit**, and **syntax highlighting** in code blocks.
 
 ## What it deliberately does not do
 
@@ -276,13 +307,13 @@ untouched by replacing the app.
 ## How it works
 
 SilverNotes is a dependency-free Swift Package (AppKit, macOS 13+),
-~3,400 lines across 13 source files, each concern in one file:
+~7,300 lines across 17 source files, each concern in one file:
 
 - **Panel** — an `NSPanel` (borderless, non-activating, floating)
   docked to the screen edge, plus a second tiny panel for the sliver.
   Show/hide is a frame animation with a post-animation on-screen
-  verification. Triggers (Hot Side, drag-in, click-outside, Esc
-  layering) are `NSEvent` monitors; the global hotkey is Carbon, so no
+  verification. Triggers (Hot Side, drag-in, click-outside, Esc)
+  are `NSEvent` monitors; the global hotkey is Carbon, so no
   Accessibility permission is involved anywhere.
 - **Editor** — each card hosts an `NSTextView` holding the note's
   source. `MarkdownEngine` renders by computing an attributed copy and
@@ -293,8 +324,10 @@ SilverNotes is a dependency-free Swift Package (AppKit, macOS 13+),
   saved on a debounce while typing and immediately for structural
   changes, with rotating backup snapshots. The models are Codable and
   storage-agnostic — the register's SQLite recommendation can still be
-  adopted later as a store-layer change only. Attachments are embedded
-  file copies under `Attachments/<noteID>/`.
+  adopted later as a store-layer change only. Attachments follow the
+  split rule above: dropped images are embedded copies under
+  `Attachments/<noteID>/`; other dropped files are linked to their
+  originals by path.
 
 ## Project layout
 
@@ -307,18 +340,25 @@ silvernotes-app/
 │   ├── NoteCardView.swift         # one card: editor host, footer, gear menu, attachments
 │   ├── NoteTextView.swift         # the editor; attribute-only rendering glue
 │   ├── MarkdownEngine.swift       # hidden-Markdown renderer (subset above)
+│   ├── SNLayoutManager.swift      # draws the ::highlight:: marker band
 │   ├── FormattingToolbar.swift    # floating selection toolbar
+│   ├── GearMenu.swift             # the custom per-note gear menu
 │   ├── NoteStore.swift            # JSON store, trash retention, attachments, backups
 │   ├── Models.swift               # folder / note / attachment / store document
 │   ├── HotKeyManager.swift        # Carbon ⌃⌥⌘Space registration
 │   ├── SettingsController.swift   # settings window, launch-at-login (SMAppService)
 │   ├── Preferences.swift          # UserDefaults keys and accessors
+│   ├── LaunchSplash.swift         # launch loading screen
+│   ├── UpdateChecker.swift        # Check for Updates (download, SHA-256 verify, swap)
 │   └── Theme.swift                # colour and font tokens (light + dark)
+├── Tests/SilverNotesTests/        # 19 XCTest cases: store, Markdown engine, list population
 ├── IconSource/                    # icon artwork (binaries stored as .b64 — see RESTORE-NOTES.md)
 ├── AppIcon.icns                   # bundled app icon (stored as AppIcon.icns.b64 in this repo)
 ├── Package.swift                  # dependency-free Swift Package, macOS 13+
-├── build-app.sh                   # release build → dist/SilverNotes.app, ad-hoc signed
+├── build-app.sh                   # test suite first, then release build → dist/SilverNotes.app, ad-hoc signed
 ├── README.md
+├── VISUAL-AUDIT-RUBRIC.md         # the Variation A grading rubric (109 rows, 15 states)
+├── CAPTURE-SCRIPT.md              # the guided on-Mac capture script for milestone rounds
 └── ROADMAP.md                     # improvement list, version arc, confirmation checklist
 ```
 
@@ -337,6 +377,11 @@ that folder and everything is gone.
   silver`. The exception type and the first frames of the crashed
   thread say exactly where it died; that is how the v0.1.0 launch
   crash below was found.
+- **Something fails silently — no crash, the app just misbehaves** —
+  since v0.5.1 the app catches uncaught exceptions and writes them
+  to `~/Library/Application Support/SilverNotes/last-exception.log`
+  (timestamp, exception name and reason, call stack). Check there
+  first; it names the culprit a silent failure would otherwise hide.
 - **Gatekeeper blocks the first open** — the build is ad-hoc signed,
   not notarized (yet — see ROADMAP.md). Right-click the app → Open →
   Open. Needed once.
@@ -357,8 +402,48 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
-- **v0.4.0 (November 25, 2026) — the full mockup-fidelity release,
-  CI-built, not yet confirmed on a Mac.** A 138-item audit of the
+- **v0.6.0 (November 26, 2026) — the Variation A visual pass,
+  CI-built, on-device confirmation pending.** 73 properties were
+  measured against the final mockup and 56 aligned: the solid
+  marker-highlight band, the formatting toolbar in the design's
+  order with its yellow Highlight chip, 50 pt folder rows, full
+  card footers (a folded card shows an unfold chevron), the 236 pt
+  Settings sidebar in the package's surface colour, a shadow under
+  the sliver, accent-tinted text selection. The search field now
+  flexes across the header while open, so "Search all notes" no
+  longer clips. Notes load expanded — folding is session-only.
+  Every build is now gated on the 19-test suite (see Building from
+  source); this release's CI run passed all 19. The remaining
+  rubric items are rendering judgements (blur, shadow softness)
+  that only the milestone capture round on a real Mac can settle;
+  that round covers v0.5.1 and v0.6.0 together.
+- **v0.5.1 (November 26, 2026) — the bug-fix release, CI-built,
+  on-device confirmation pending.** Fixes the blank Standard-density
+  lists (card population is now a deterministic rebuild — the
+  pattern the Compact and folder views already proved), the panel
+  never taking keyboard focus on open (it now becomes the key
+  window, so Esc, Compact navigation and the ⌥⌘ shortcuts actually
+  receive keys), and Compact rows rebuilding on selection, which
+  ate the double-click that expands a row. Adds an
+  uncaught-exception log at `~/Library/Application
+  Support/SilverNotes/last-exception.log`, so the next silent
+  failure names itself instead of needing a guessing pass.
+- **v0.5.0 (November 26, 2026) — installed and used on a real Mac
+  the same day.** It reached the developer's Mac through the app's
+  own Check for Updates, confirming the self-update path end to end
+  (download, SHA-256 verify, bundle swap, relaunch). A screen
+  recording taken that day, running v0.5.0, is what exposed the
+  Standard-density blank-lists bug — note counts were right, the
+  cards never appeared — which v0.5.1 fixes above. The release
+  itself carried the Compact width fix, the Underline formatting
+  action, the first-run welcome empty state, and the Wide rail's
+  New Folder row.
+- **v0.4.0 (November 25, 2026) — the full mockup-fidelity release.**
+  Its dedicated on-device checklist round never ran as such; the
+  feature set reached a real Mac as part of v0.5.0 (installed and
+  used there, above), and per-release checklist rounds have since
+  been replaced by the automated suite plus milestone capture
+  rounds (see v0.6.0). A 138-item audit of the
   app against the approved mockup package (65 match / 43 mismatch /
   19 missing) drove this release; every fixable mismatch and
   missing element is addressed. The designed chrome is now real:
