@@ -147,6 +147,12 @@ final class NoteStoreTests: XCTestCase {
     /// come back expanded after a reload, and the reset must be
     /// persisted so the on-disk document agrees.
     func testNotesLoadExpandedByDefault() throws {
+        // load() first — as the app does at launch: it creates the
+        // store directory that save() writes into. Without it the
+        // saves below silently land nowhere and the reload can only
+        // seed. (The logic tests above skip load() because they never
+        // cross store instances.)
+        store.load()
         let a = store.createFolder(name: "A")
         let note = store.createNote(in: a.id, body: "fold me")
         store.setNoteFolded(id: note.id, folded: true)
