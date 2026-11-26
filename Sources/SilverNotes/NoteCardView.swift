@@ -33,6 +33,10 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     private var pinButton: NSButton!
     private var textHeightConstraint: NSLayoutConstraint!
     private var renderWorkItem: DispatchWorkItem?
+    /// The note this card was last configured with. `configure(with:)`
+    /// is a no-op when handed the same note again — most reloads follow
+    /// a change to some OTHER note in the folder.
+    private var lastConfiguredNote: SNNote?
 
     private static let timestampFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -169,14 +173,36 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     // MARK: Configure
 
     func configure(with note: SNNote) {
+        let markup = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey)
+        // Fast path: every render-relevant field matches the last
+        // configuration, so skip the render, the attachment rebuild, and
+        // the layout pass entirely. (updatedAt is deliberately excluded:
+        // typing bumps it constantly, and a structural reload passing
+        // over the card being edited must not re-render it — only the
+        // timestamp label follows it.)
+        if let last = lastConfiguredNote,
+           last.id == note.id, last.body == note.body, last.mode == note.mode,
+           last.color == note.color, last.isPinned == note.isPinned,
+           last.isFolded == note.isFolded, last.folderID == note.folderID,
+           last.attachments == note.attachments,
+           textView.string == note.body, textView.showMarkup == markup {
+            timestampLabel.stringValue = NoteCardView.timestampFormatter.string(from: note.updatedAt)
+            lastConfiguredNote = note
+            return
+        }
         noteID = note.id
         folderID = note.folderID
         layer?.backgroundColor = SNTheme.tint(for: note.color).cgColor
         if textView.string != note.body {
             textView.string = note.body
         }
+        // Setting mode / showMarkup each fire a render from their didSet
+        // observers; suppress those so this configuration renders exactly
+        // once — the explicit refreshRendering() below.
+        textView.suppressesRenderOnPropertyChange = true
         textView.mode = note.mode
-        textView.showMarkup = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey)
+        textView.showMarkup = markup
+        textView.suppressesRenderOnPropertyChange = false
         textView.isEditable = !isTrashMode
         pinButton.image = NSImage(systemSymbolName: note.isPinned ? "pin.fill" : "pin", accessibilityDescription: "Pin")
         pinButton.contentTintColor = note.isPinned ? SNTheme.accent : SNTheme.secondaryText
@@ -186,6 +212,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         applyFold(note.isFolded, note: note)
         textView.refreshRendering()
         updateTextHeight()
+        lastConfiguredNote = note
     }
 
     func reloadFromStore() {
@@ -226,19 +253,22 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     func textDidChange(_ notification: Notification) {
         onBecomeActive?(self)
         store.updateNoteBody(id: noteID, body: textView.string)
-        if let note = store.note(id: noteID) {
-            timestampLabel.stringValue = NoteCardView.timestampFormatter.string(from: note.updatedAt)
-            updateProgressLabel(note)
-        }
-        // Debounce the (attribute-only) re-render so typing stays fluid.
+        // Everything derived from the text — the (attribute-only)
+        // re-render, the height pass, the timestamp, the task progress —
+        // is debounced together, so a keystroke does NO layout work at
+        // all; the card catches up once typing pauses for 0.25 s.
         renderWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.textView.refreshRendering()
-            self?.updateTextHeight()
+            guard let self = self else { return }
+            self.textView.refreshRendering()
+            self.updateTextHeight()
+            if let note = self.store.note(id: self.noteID) {
+                self.timestampLabel.stringValue = NoteCardView.timestampFormatter.string(from: note.updatedAt)
+                self.updateProgressLabel(note)
+            }
         }
         renderWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
-        updateTextHeight()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
@@ -307,8 +337,12 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
     }
 
     @objc private func togglePin() {
+        // No reloadFromStore() here: the store change fires
+        // onStructuralChange, and the controller's diffed reload
+        // reconfigures this card with its new pin state and order.
+        // Reloading here too would re-render a card the reload may have
+        // just detached, for nothing.
         store.toggleNotePin(id: noteID)
-        reloadFromStore()
     }
 
     @objc private func showGearMenu(_ sender: NSButton) {
@@ -468,6 +502,27 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
 
     // MARK: Attachments UI
 
+    /// Decoded card images keyed by attachment ID, so attachment rebuilds
+    /// never decode the same image twice.
+    private static let imageCache: NSCache<NSUUID, NSImage> = {
+        let cache = NSCache<NSUUID, NSImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    /// The image a card displays for an attachment: the store-written
+    /// thumbnail when one exists (attachments added in v0.1.1+), else the
+    /// original file — decoded once, then served from the cache.
+    private static func cardImage(for attachment: SNAttachment, store: NoteStore) -> NSImage? {
+        let key = attachment.id as NSUUID
+        if let cached = imageCache.object(forKey: key) { return cached }
+        let thumbURL = store.thumbnailURL(for: attachment)
+        let url = FileManager.default.fileExists(atPath: thumbURL.path) ? thumbURL : store.attachmentURL(attachment)
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        imageCache.setObject(image, forKey: key)
+        return image
+    }
+
     private func rebuildAttachments(_ note: SNNote) {
         for sub in attachmentsStack.arrangedSubviews {
             attachmentsStack.removeArrangedSubview(sub)
@@ -487,7 +542,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSMenuDelegate {
         container.translatesAutoresizingMaskIntoConstraints = false
 
         let url = store.attachmentURL(attachment)
-        if attachment.isImage, let image = NSImage(contentsOf: url) {
+        if attachment.isImage, let image = NoteCardView.cardImage(for: attachment, store: store) {
             let imageView = NSImageView(image: image)
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.translatesAutoresizingMaskIntoConstraints = false

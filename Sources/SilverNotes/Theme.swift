@@ -98,10 +98,16 @@ enum SNTheme {
 
     // MARK: Fonts
 
-    static var bodyFont: NSFont { NSFont.systemFont(ofSize: 14) }
-    static var codeFont: NSFont { NSFont.monospacedSystemFont(ofSize: 13, weight: .regular) }
+    // Fonts are immutable value objects handed out on every render pass;
+    // build each one once instead of re-creating it per access.
+    static let bodyFont: NSFont = NSFont.systemFont(ofSize: 14)
+    static let codeFont: NSFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    private static let headingFonts: [NSFont] = [
+        NSFont.systemFont(ofSize: 20, weight: .bold),
+        NSFont.systemFont(ofSize: 17, weight: .bold),
+        NSFont.systemFont(ofSize: 15, weight: .bold),
+    ]
     static func headingFont(level: Int) -> NSFont {
-        let size: CGFloat = level == 1 ? 20 : (level == 2 ? 17 : 15)
-        return NSFont.systemFont(ofSize: size, weight: .bold)
+        headingFonts[min(max(level, 1), 3) - 1]
     }
 }

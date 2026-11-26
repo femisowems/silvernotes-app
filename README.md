@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.1.0-e4572e" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.1.1-e4572e" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,13 +24,15 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.1.0**, its first MVP
-> build. It is **confirmed working** on a real Mac (MacBook Air,
-> macOS 26) as of November 25, 2026 — with a few first-use bugs, which
-> are tracked in [ROADMAP.md](ROADMAP.md). Features, behaviour and this
-> README may change between versions, and things may break. Nothing
-> below claims a feature "works" beyond what the code does; the
-> [status notes](#honest-status) are kept current.
+> 🚧 **Work in progress** — SilverNotes is at **v0.1.1**, a performance
+> pass over the v0.1.0 MVP. The MVP is **confirmed working** on a real
+> Mac (MacBook Air, macOS 26) as of November 25, 2026 — with a few
+> first-use bugs, which are tracked in [ROADMAP.md](ROADMAP.md).
+> v0.1.1 itself is CI-built and awaiting its on-device confirmation
+> round (see the [status notes](#honest-status)). Features, behaviour
+> and this README may change between versions, and things may break.
+> Nothing below claims a feature "works" beyond what the code does;
+> the [status notes](#honest-status) are kept current.
 
 ---
 
@@ -344,6 +346,19 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.1.1 (November 25, 2026) — performance pass, CI-built, not yet
+  confirmed on a Mac.** No new features and no behaviour changes by
+  design: the card stack is diffed by note ID (a structural change no
+  longer rebuilds every card, and each card renders exactly once per
+  configuration), typing no longer forces a layout pass per keystroke,
+  attachment images display from downscaled thumbnails behind a decode
+  cache instead of re-decoding the full original on every rebuild, the
+  global mouse monitors behind Hot Side are removed entirely while
+  the feature is off (and read cached preferences while on), theme
+  fonts are built once, the JSON store writes compactly and is no
+  longer rewritten on a clean launch, and search is debounced. The
+  confirmation checklist in [ROADMAP.md](ROADMAP.md) carries the
+  v0.1.1 checks.
 - v0.1.0 was authored on a Linux VM (no AppKit), then compiled on a
   MacBook Air: the first compile surfaced three errors, all fixed.
 - The road here was not straight, and the record matters: the first

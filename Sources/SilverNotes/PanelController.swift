@@ -29,6 +29,14 @@ final class PanelController: NSObject {
     private var dragMonitor: Any?
     private var clickMonitor: Any?
     private var keyMonitor: Any?
+
+    /// Cached preference values. The global mouse handlers run on every
+    /// pointer event system-wide, so they must not hit UserDefaults per
+    /// event; these are refreshed at setUp and at every point where the
+    /// corresponding preference is written (see hotSidePreferenceDidChange
+    /// and sideDidChange).
+    private var hotSideEnabledCached = false
+    private var panelSideCached: PanelSide = .right
     private var hotSideTimer: Timer?
     private var dragRevealTimer: Timer?
     private var childInteractionCount = 0
@@ -221,8 +229,11 @@ final class PanelController: NSObject {
     }
 
     /// Re-dock after the side preference changes: geometry, sliver, corner.
+    /// Both side-preference write sites (Settings, status-bar menu) route
+    /// through here, so the cached side is refreshed here too.
     func sideDidChange() {
         ensureSetUp()
+        panelSideCached = Preferences.panelSide
         positionSliver()
         contentController.updateRoundedCorner(for: Preferences.panelSide)
         if isPanelVisible, let screen = panel.screen ?? NSScreen.main {
@@ -254,14 +265,11 @@ final class PanelController: NSObject {
     // MARK: Monitors
 
     private func installMonitors() {
+        hotSideEnabledCached = Preferences.hotSideEnabled
+        panelSideCached = Preferences.panelSide
         // Hot Side + drag-in: global mouse monitors need no permission for
         // mouse-moved / drag events delivered to other apps.
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
-            self?.handleMouseMoved()
-        }
-        dragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
-            self?.handleMouseDragged()
-        }
+        updateMouseMonitors()
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             self?.handleGlobalClick(event)
         }
@@ -271,8 +279,40 @@ final class PanelController: NSObject {
         }
     }
 
+    /// Installs or removes the global mouse-moved / drag monitors to match
+    /// the Hot Side preference. When Hot Side is off the monitors are
+    /// removed entirely — zero per-event cost anywhere on the system —
+    /// and reinstalled when it is switched back on.
+    private func updateMouseMonitors() {
+        if hotSideEnabledCached {
+            if mouseMonitor == nil {
+                mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+                    self?.handleMouseMoved()
+                }
+            }
+            if dragMonitor == nil {
+                dragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
+                    self?.handleMouseDragged()
+                }
+            }
+        } else {
+            if let monitor = mouseMonitor { NSEvent.removeMonitor(monitor); mouseMonitor = nil }
+            if let monitor = dragMonitor { NSEvent.removeMonitor(monitor); dragMonitor = nil }
+            hotSideTimer?.invalidate(); hotSideTimer = nil
+            dragRevealTimer?.invalidate(); dragRevealTimer = nil
+        }
+    }
+
+    /// Called by every site that writes the Hot Side preference (the
+    /// Settings checkbox and the status-bar menu) so the cached value and
+    /// the monitor set stay in step with the stored preference.
+    func hotSidePreferenceDidChange() {
+        hotSideEnabledCached = Preferences.hotSideEnabled
+        updateMouseMonitors()
+    }
+
     private func handleMouseMoved() {
-        guard Preferences.hotSideEnabled, !isPanelVisible else { return }
+        guard hotSideEnabledCached, !isPanelVisible else { return }
         // Drag suppression: never Hot-Side-trigger while a drag is in flight;
         // drags have their own reveal path with a wider zone.
         guard NSEvent.pressedMouseButtons == 0 else { return }
@@ -281,7 +321,7 @@ final class PanelController: NSObject {
             hotSideTimer?.invalidate()
             return
         }
-        let side = Preferences.panelSide
+        let side = panelSideCached
         let distance = side == .right ? screen.frame.maxX - mouse.x : mouse.x - screen.frame.minX
         if distance <= 2 {
             if hotSideTimer == nil {
@@ -300,7 +340,7 @@ final class PanelController: NSObject {
         guard !isPanelVisible else { return }
         let mouse = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) else { return }
-        let side = Preferences.panelSide
+        let side = panelSideCached
         let distance = side == .right ? screen.frame.maxX - mouse.x : mouse.x - screen.frame.minX
         if distance <= 12 {
             if dragRevealTimer == nil {

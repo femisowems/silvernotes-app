@@ -1,5 +1,5 @@
 #!/bin/bash
-# SilverNotes v0.1.0 — build a release binary and wrap it in a SilverNotes.app bundle.
+# SilverNotes v0.1.1 — build a release binary and wrap it in a SilverNotes.app bundle.
 # Run on a Mac from inside the silvernotes-app folder:  ./build-app.sh
 # Result: dist/SilverNotes.app  (drag it into /Applications)
 set -euo pipefail
@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="SilverNotes"
 BUNDLE_ID="io.starterdev.silvernotes"
-VERSION="0.1.0"
+VERSION="0.1.1"
 MIN_MACOS="13.0"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"

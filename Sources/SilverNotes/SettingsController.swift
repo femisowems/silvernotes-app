@@ -68,7 +68,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         statusLabel.textColor = .secondaryLabelColor
 
         _ = label("Toggle the panel from anywhere: Control + Option + Command + Space.", y: 62)
-        let version = label("SilverNotes v0.1.0 MVP — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
+        let version = label("SilverNotes v0.1.1 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
         version.maximumNumberOfLines = 2
         version.lineBreakMode = .byWordWrapping
         version.frame = NSRect(x: 20, y: 8, width: 340, height: 34)
@@ -92,6 +92,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
 
     @objc private func hotSideChanged(_ sender: NSButton) {
         Preferences.hotSideEnabled = sender.state == .on
+        PanelController.shared.hotSidePreferenceDidChange()
     }
 
     @objc private func markupChanged(_ sender: NSButton) {

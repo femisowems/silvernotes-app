@@ -29,6 +29,21 @@ final class PanelContentController: NSViewController {
     private let stackView = NSStackView()
     private let bottomLabel = NSTextField(labelWithString: "")
 
+    /// Live card views keyed by "<mode>:<noteID>" (the mode prefix keeps
+    /// a note's Trash wrapper distinct from its plain card), plus the
+    /// note each was last configured with. reload() diffs against these
+    /// maps so a structural change creates, removes, and reconfigures
+    /// only the cards it actually affects — v0.1.0 rebuilt every card in
+    /// the folder on every change.
+    private var cardViews: [String: NSView] = [:]
+    private var cardNotes: [String: SNNote] = [:]
+    private var searchWorkItem: DispatchWorkItem?
+    /// The "show markup" preference as of the last card configuration.
+    /// It lives outside the note model, so the diff tracks it separately:
+    /// when it flips, every visible card reconfigures even though no
+    /// note changed.
+    private var lastMarkupSetting: Bool?
+
     override func loadView() {
         let root = NSVisualEffectView()
         root.material = .sidebar
@@ -176,14 +191,11 @@ final class PanelContentController: NSViewController {
     // MARK: Reload
 
     func reload() {
-        for sub in stackView.arrangedSubviews {
-            stackView.removeArrangedSubview(sub)
-            sub.removeFromSuperview()
-        }
         activeCard = nil
 
         switch presentation {
         case .folders:
+            clearStack()
             backButton.isHidden = true
             titleLabel.stringValue = "Folders"
             newButton.toolTip = "New folder"
@@ -202,12 +214,10 @@ final class PanelContentController: NSViewController {
             newButton.toolTip = "New note"
             let notes = store.notes(in: folderID)
             if notes.isEmpty {
+                clearStack()
                 stackView.addArrangedSubview(emptyState(text: "No notes yet.\nPress + or drag anything here."))
-            }
-            for note in notes {
-                let noteCard = card(for: note)
-                stackView.addArrangedSubview(noteCard)
-                pinWidth(noteCard)
+            } else {
+                updateCardStack(notes: notes, trash: false)
             }
             bottomLabel.stringValue = "\(notes.count) note\(notes.count == 1 ? "" : "s")"
 
@@ -217,12 +227,10 @@ final class PanelContentController: NSViewController {
             newButton.toolTip = "Empty Trash"
             let trashed = store.trashedNotes
             if trashed.isEmpty {
+                clearStack()
                 stackView.addArrangedSubview(emptyState(text: "Trash is empty.\nDeleted notes stay here for 30 days."))
-            }
-            for note in trashed {
-                let trashCard = card(for: note, trash: true)
-                stackView.addArrangedSubview(trashCard)
-                pinWidth(trashCard)
+            } else {
+                updateCardStack(notes: trashed, trash: true)
             }
             bottomLabel.stringValue = "Notes are permanently deleted after 30 days"
 
@@ -232,15 +240,92 @@ final class PanelContentController: NSViewController {
             newButton.toolTip = "New note"
             let results = store.search(query)
             if results.isEmpty {
+                clearStack()
                 stackView.addArrangedSubview(emptyState(text: "No notes match “\(query)”."))
-            }
-            for note in results {
-                let resultCard = card(for: note)
-                stackView.addArrangedSubview(resultCard)
-                pinWidth(resultCard)
+            } else {
+                updateCardStack(notes: results, trash: false)
             }
             bottomLabel.stringValue = "\(results.count) result\(results.count == 1 ? "" : "s")"
         }
+    }
+
+    /// Removes every arranged subview and forgets every cached card.
+    private func clearStack() {
+        for sub in stackView.arrangedSubviews {
+            stackView.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+        cardViews.removeAll()
+        cardNotes.removeAll()
+    }
+
+    /// Brings the card stack in line with `notes`, diffing by note ID:
+    /// cards for departed notes are removed, cards for new notes are
+    /// created, surviving cards keep their views (only their order in
+    /// the stack is re-applied) and are reconfigured ONLY if their note
+    /// changed since the last configuration.
+    private func updateCardStack(notes: [SNNote], trash: Bool) {
+        let prefix = trash ? "trash" : "note"
+        let wantedKeys = notes.map { "\(prefix):\($0.id.uuidString)" }
+        let wanted = Set(wantedKeys)
+        let markup = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey)
+        let markupChanged = lastMarkupSetting != markup
+        lastMarkupSetting = markup
+
+        // Cards whose notes left this presentation: remove and forget.
+        for key in cardViews.keys.filter({ !wanted.contains($0) }) {
+            if let view = cardViews[key] {
+                stackView.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            cardViews.removeValue(forKey: key)
+            cardNotes.removeValue(forKey: key)
+        }
+        // Anything else in the stack (empty-state labels, folder rows)
+        // does not belong in a card presentation.
+        let wantedViews = Set(wantedKeys.compactMap { cardViews[$0] })
+        for sub in stackView.arrangedSubviews where !wantedViews.contains(sub) {
+            stackView.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+
+        // Build the desired order, creating/configuring only what's new
+        // or changed. (A newly created card configures itself in init.)
+        var ordered: [NSView] = []
+        var fresh: Set<String> = []
+        for (index, note) in notes.enumerated() {
+            let key = wantedKeys[index]
+            if let existing = cardViews[key] {
+                if (cardNotes[key] != note || markupChanged), let cardView = cardView(in: existing) {
+                    cardView.configure(with: note)
+                    cardNotes[key] = note
+                }
+                ordered.append(existing)
+            } else {
+                let view = card(for: note, trash: trash)
+                cardViews[key] = view
+                cardNotes[key] = note
+                fresh.insert(key)
+                ordered.append(view)
+            }
+        }
+
+        // Re-apply the order: detach each surviving view from the
+        // arranged list (it stays in the hierarchy, constraints intact)
+        // and re-add in presentation order. Only fresh cards need their
+        // width pinned — survivors kept the constraint from creation.
+        for view in ordered { stackView.removeArrangedSubview(view) }
+        for (index, view) in ordered.enumerated() {
+            stackView.addArrangedSubview(view)
+            if fresh.contains(wantedKeys[index]) { pinWidth(view) }
+        }
+    }
+
+    /// The NoteCardView inside a stack entry — the entry itself for
+    /// plain cards, or the first arranged subview of the Trash wrapper.
+    private func cardView(in view: NSView) -> NoteCardView? {
+        if let card = view as? NoteCardView { return card }
+        return (view as? NSStackView)?.arrangedSubviews.first as? NoteCardView
     }
 
     /// Pins a stack subview's width to the stack. MUST be called only after
@@ -410,6 +495,17 @@ final class PanelContentController: NSViewController {
     }
 
     @objc private func searchChanged() {
+        // Debounced like the editor's render: NSSearchField fires its
+        // action on every keystroke, and applying a search re-scans every
+        // note and re-diffs the card stack — once per pause in typing is
+        // plenty.
+        searchWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.applySearch() }
+        searchWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func applySearch() {
         let query = searchField.stringValue
         if query.isEmpty {
             if case .notes = presentation { reload() }

@@ -52,6 +52,10 @@ final class NoteStore {
         try? fm.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
         try? fm.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
 
+        // Only write the store back at the end if something actually
+        // changed (seeded, restored from backup, or trash purged) — a
+        // clean load of an existing store leaves the file untouched.
+        var changed = false
         if let raw = try? Data(contentsOf: storeFileURL),
            let decoded = try? JSONDecoder.storeDecoder.decode(StoreData.self, from: raw) {
             data = decoded
@@ -63,11 +67,15 @@ final class NoteStore {
             if !restoreNewestBackup() {
                 seedIfNeeded()
             }
+            changed = true
         } else {
             seedIfNeeded()
+            changed = true
         }
+        let noteCountBeforePurge = data.notes.count
         purgeExpiredTrash()
-        save()
+        if data.notes.count != noteCountBeforePurge { changed = true }
+        if changed { save() }
     }
 
     /// Atomic write of the whole document. Small data, called on a debounce
@@ -314,6 +322,9 @@ final class NoteStore {
             relativePath: "\(noteID.uuidString)/\(destination.lastPathComponent)",
             isImage: imageExtensions.contains(url.pathExtension.lowercased())
         )
+        if attachment.isImage {
+            makeThumbnail(for: attachment)
+        }
         data.notes[i].attachments.append(attachment)
         data.notes[i].updatedAt = Date()
         save(); onStructuralChange?()
@@ -333,8 +344,39 @@ final class NoteStore {
         attachmentsDirectory.appendingPathComponent(attachment.relativePath)
     }
 
+    /// Downscaled preview written beside an image attachment when it is
+    /// added, so cards display (and decode) the small file instead of the
+    /// full-resolution original. Attachments added before v0.1.1 have no
+    /// thumbnail; callers fall back to the original for those.
+    func thumbnailURL(for attachment: SNAttachment) -> URL {
+        attachmentsDirectory.appendingPathComponent(attachment.relativePath + ".thumb.png")
+    }
+
+    private func makeThumbnail(for attachment: SNAttachment) {
+        let source = attachmentURL(attachment)
+        guard let image = NSImage(contentsOf: source),
+              image.size.width > 0, image.size.height > 0 else { return }
+        // Cards render images ~110 pt tall in a ~256 pt-wide slot; 220 px
+        // of height (and a 440 px width cap) covers Retina at that size.
+        let scale = min(1, min(440 / image.size.width, 220 / image.size.height))
+        let target = NSSize(width: max(1, (image.size.width * scale).rounded()),
+                            height: max(1, (image.size.height * scale).rounded()))
+        let thumb = NSImage(size: target)
+        thumb.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: NSRect(origin: .zero, size: target),
+                   from: NSRect(origin: .zero, size: image.size),
+                   operation: .copy, fraction: 1)
+        thumb.unlockFocus()
+        guard let tiff = thumb.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: thumbnailURL(for: attachment), options: [.atomic])
+    }
+
     private func removeAttachmentFile(_ attachment: SNAttachment) {
         try? FileManager.default.removeItem(at: attachmentURL(attachment))
+        try? FileManager.default.removeItem(at: thumbnailURL(for: attachment))
     }
 
     // MARK: Seed content (all original, written for SilverNotes)
@@ -401,7 +443,10 @@ extension JSONEncoder {
     static var storeEncoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        // Compact output: the store file is machine-read only, and
+        // pretty-printing + key sorting are the encoder's most expensive
+        // formatting options. (Files written by v0.1.0 still decode —
+        // formatting is not part of the format.)
         return encoder
     }
 }

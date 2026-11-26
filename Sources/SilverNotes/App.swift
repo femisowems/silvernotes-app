@@ -170,7 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func menuSettings() { SettingsController.shared.show() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
     @objc private func menuAbout() { NSApp.orderFrontStandardAboutPanel(nil) }
-    @objc private func menuHotSide() { Preferences.hotSideEnabled.toggle() }
+    @objc private func menuHotSide() {
+        Preferences.hotSideEnabled.toggle()
+        PanelController.shared.hotSidePreferenceDidChange()
+    }
     @objc private func menuFlipSide() {
         Preferences.panelSide = Preferences.panelSide == .right ? .left : .right
         PanelController.shared.sideDidChange()

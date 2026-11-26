@@ -356,14 +356,18 @@ enum MarkdownEngine {
         }
     }
 
-    private static func italicFont() -> NSFont {
+    /// Resolved once: the NSFontManager family/traits query is far too
+    /// expensive to run for every italic run of every render.
+    private static let italicFontCached: NSFont = {
         let base = SNTheme.bodyFont
         if let italic = NSFontManager.shared.font(withFamily: base.familyName ?? ".AppleSystemUIFont",
                                                   traits: .italicFontMask, weight: 5, size: base.pointSize) {
             return italic
         }
         return base
-    }
+    }()
+
+    private static func italicFont() -> NSFont { italicFontCached }
 
     private static func findChar(_ ns: NSString, char: unichar, from: Int, to end: Int) -> Int? {
         var i = from

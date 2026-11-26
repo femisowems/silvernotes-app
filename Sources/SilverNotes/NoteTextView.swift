@@ -12,11 +12,20 @@ final class NoteTextView: NSTextView {
 
     var noteID: UUID?
     var mode: NoteMode = .standard {
-        didSet { applyModeSettings(); refreshRendering() }
+        didSet {
+            applyModeSettings()
+            if !suppressesRenderOnPropertyChange { refreshRendering() }
+        }
     }
     var showMarkup: Bool = false {
-        didSet { refreshRendering() }
+        didSet { if !suppressesRenderOnPropertyChange { refreshRendering() } }
     }
+
+    /// While true, the `mode` / `showMarkup` observers above do NOT trigger
+    /// a render. NoteCardView sets this during `configure(with:)` so a
+    /// configuration pass renders exactly once (its own explicit call)
+    /// instead of once per property assignment plus once more explicitly.
+    var suppressesRenderOnPropertyChange = false
     private(set) var taskMarkers: [TaskMarker] = []
 
     /// Called when the user toggles a task checkbox by clicking it.
