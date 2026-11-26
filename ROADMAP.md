@@ -1,20 +1,33 @@
 # SilverNotes — Roadmap & improvement list
 
-Saved Wed Nov 25, 2026. Ordered by impact within each stretch of the
-version arc. Check items off here as they ship — and only call something
-fixed once it has been seen working on a real Mac (see the confirmation
-checklist below).
+Saved Wed Nov 25, 2026; last updated Thu Nov 26, 2026. Ordered by impact
+within each stretch of the version arc. Check items off here as they
+ship — and only call something fixed once it has been seen working on a
+real Mac (see the confirmation checklist below).
+
+## Where things stand (Nov 26, 2026)
+
+- **Current release: v0.4.0** (Nov 25, 2026) — the full mockup-fidelity
+  pass. Five releases shipped on Nov 25 alone: v0.1.0 → v0.1.1 → v0.2.0 →
+  v0.2.1 → v0.3.0 → v0.4.0.
+- **Open loop: the v0.4.0 confirmation round.** Install target is
+  v0.4.0; checks 16–30 in the checklist below are the live round. If
+  v0.3.0 is still installed, its self-install of v0.4.0 doubles as the
+  update mechanism's first live test (item 16).
+- **Everything else is post-confirmation.** No new feature work until
+  the checklist round closes; the v0.5 candidates are items 5, 7, the
+  rest of 3, and 27.
 
 ## Improvement list
 
-- [x] **1. Launch-crash fix — CONFIRMED WORKING on Femi's Mac (Nov 25, 2026)** —
+- [x] **1. Launch-crash fix — CONFIRMED WORKING on Femi's Mac (Nov 25, 2026)** — v0.1.0's first on-device round found the real bug, and it was worse than "the panel doesn't appear": the app **crashed on launch**. Root cause CONFIRMED by the crash reports in `~/Library/Logs/DiagnosticReports`: `EXC_BREAKPOINT` inside `PanelController.show()`, reached via `applicationOpenUntitledFile` — AppKit calls that during a cold launch, *before* `applicationDidFinishLaunching` has run `setUp()`, so `show()` touched the still-nil panel and sliver and trapped. Fix: every public entry point on the panel controller routes through a self-guarding `ensureSetUp()` first, and the untitled-file hook is removed entirely (a cold launch is covered by the first-launch auto-show; relaunching a running app still opens the panel via `applicationShouldHandleReopen`). *Status: CONFIRMED Nov 25, 2026 — Femi launched the fixed build: "a working version with a few bugs but something to work with."*
 - [ ] **2. Clean-room / fresh-launch verification** — the launch bug above is exactly the class that only shows up in states a developer's machine never has: no saved preferences, no prior install, the Gatekeeper first-open path, a fresh user account. Add a standing verification pass for every release: install into a clean environment (fresh user account or a wiped data folder), launch cold, and confirm the panel, the sliver, the menu-bar icon, and an empty DiagnosticReports folder afterwards. If a rented cloud Mac or a spare local account proves practical, use it; until then, a scripted pass on Femi's Mac with the data folder temporarily moved aside is the minimum. *Why it ranks this high: every SilverNotes failure so far was a launch-state failure, and none of them could be reproduced from the build machine.*
 - [ ] **3. Drag-resize** *(v0.2)* — the Wide (~48%) step **SHIPPED in v0.4.0** (Settings → General → Panel width, with the in-panel folder rail); edge drag-resize with the width remembered remains open. The standard width is a fixed proportion (~34% of the screen, clamped 300–560 pt).
 - [x] **4. Per-display dock-side memory — SHIPPED in v0.4.0 (Nov 25, 2026)** — the docked side is remembered per display (keyed by display ID); the Settings segmented control sets the current display's side, with the legacy global preference as fallback.
 - [ ] **5. HTML→Markdown paste conversion** *(v0.2)* — paste is plain text only in the MVP, deliberately: what lands is the text you copied, never a blob of web HTML. Converting pasted rich content into the Markdown subset (headings, bold, links, lists) is the upgrade; it must degrade to plain text rather than ever inserting markup the renderer can't show back.
 - [x] **6. Drag-reorder (notes) — SHIPPED in v0.4.0 (Nov 25, 2026)** — press-and-hold ~150 ms on a card's footer strip, then drag to reorder within the current view; the order permutes the existing `sortIndex` values (no store change) and pinned notes stay grouped first. Folder reordering was not built. Sort modes (Manual / Newest / Title) live in the bottom-bar overflow menu.
 - [ ] **7. Keyboard navigation between notes and folders** — arrow-key movement through the folder home and the card stack, with a visible selection, so the panel is fully usable without the pointer. The panel-local shortcuts (⌥⌘P / ⌥⌘⏎ / ⌥⌘1–3) already act on the most recently edited card; this makes getting *to* a card keyboard-only too.
-- [ ] **8. Bulk export (and import)** — export a folder or the whole library as Markdown files (notes already export one at a time from the gear menu). Import of a folder of Markdown files is the other half; it matters before sync exists, because export is currently the only way to move a library between Macs by hand.
+- [ ] **8. Bulk export (and import)** — folder export as Markdown **SHIPPED in v0.4.0** (notes-view overflow → Export … as Markdown…; single notes already exported from the gear menu). Remaining: whole-library export in one action, and import of a folder of Markdown files — the other half; it matters before sync exists, because export is currently the only way to move a library between Macs by hand.
 - [ ] **9. Syntax highlighting in Code mode and code blocks** — Code mode is monospaced with spellcheck/substitutions off, but nothing is highlighted. Attribute-only highlighting fits the editor's rule (rendering never touches characters); it needs the same IME-safety and mode-switch-byte-identity guarantees as the rest of the renderer before it ships.
 - [ ] **10. Full VoiceOver audit** — a dedicated pass over the panel, cards, gear menus, formatting toolbar and Settings with VoiceOver on: labels, rotor behaviour, focus order, and announcements for show/hide and task progress. Basic labels exist; an audited pass does not yet.
 - [ ] **11. SQLite store migration** — the MVP ships a versioned JSON store (atomic writes, rotating backups, corruption quarantine) instead of the register's SQLite recommendation, as a deliberate zero-dependency deviation; the models are storage-agnostic and the migration path is documented in the README. Adopt SQLite when note counts or sync make JSON the bottleneck — a store-layer change only, no UI work.
@@ -30,17 +43,21 @@ checklist below).
 - [ ] **21. Automation surface** — note/folder URLs, a URL scheme, and Shortcuts/AppleScript hooks so other apps can create and open notes. Named in the register; unscheduled, after the core is proven.
 - [ ] **22. Large-note performance pass** — rendering is attribute-only and IME-safe, but nobody has yet thrown a 10k-line note or a very long paste at it on a real Mac. Measure first (render time per keystroke on a large note), then optimise only what the numbers indict.
 - [ ] **23. iOS companion exploration** *(V2)* — planned as a bundled/discounted companion for Mac owners; the Mac app is the product, the phone app is the satellite. Exploration starts once CloudKit sync (item 17) exists to carry the data.
-- [x] **26. Full mockup-fidelity fix pass — SHIPPED in v0.4.0 (Nov 25, 2026)** — every fixable item from MOCKUP-FIDELITY-AUDIT.md (138 items graded: 65 match / 43 mismatch / 19 missing / 7 extra / 4 unverifiable): the presentation deltas (checklist progress bar + drawn round ticks + strikethrough, marker-band highlight, empty-state tile/centring, file cards above the text with Quick Look row + provenance, serif Aa, weekday timestamps, swatch order/size), the custom gear menu, folder home (All Notes / Pinned rows, bottom-bar gear), the notes bottom bar (fold-all + overflow with sort + folder export), the five-pane Settings window, Compact density, the Wide step + folder rail, drag-reorder, per-display side memory, cursor-leave grace, the drop-target state, linked (not copied) file drops for new non-image files, and the one-press Esc close (a deliberate deviation from the package's Compact ladder, at Femi's direction). NOT fixed: the package's "three built-in themes" (prose only — no names or values exist to build to), the unverifiable dark note colours / heading scale, folder drag-reorder, and edge drag-resize (item 3). Kept despite being extras: Export Note, folder pinning, Check for Updates, the loading screen.
+- [x] **24. Mockup-fidelity visual pass — SHIPPED in v0.2.0 (Nov 25, 2026)** — the app rebuilt to the approved design package's tokens, type scale and anatomy (see the shipped log). Two mockup elements were left unbuilt in this pass because they are features wearing styling's clothes — the folder home's All Notes / Pinned rows, the bottom bar's fold-all / overflow actions, and the checklist progress bar — and all three then shipped in v0.4.0 (item 26).
 - [x] **25. Check for Updates + launch loading screen — SHIPPED in v0.3.0 (Nov 25, 2026)** — see the shipped log. The update check reads GitHub releases directly; the install path (download → digest verify → swap with rollback → relaunch) awaits its first live test at the next release.
-- [x] **24. Mockup-fidelity visual pass — SHIPPED in v0.2.0 (Nov 25, 2026)** — the app rebuilt to the approved design package's tokens, type scale and anatomy (see the shipped log). Two mockup elements remain unbuilt because they are features wearing styling's clothes: the folder home's All Notes / Pinned rows and the bottom bar's fold-all / overflow actions; and the checklist progress bar (label shipped, bar pending) — pick these up with the v0.2 feature items if wanted.
+- [x] **26. Full mockup-fidelity fix pass — SHIPPED in v0.4.0 (Nov 25, 2026)** — every fixable item from MOCKUP-FIDELITY-AUDIT.md (138 items graded: 65 match / 43 mismatch / 19 missing / 7 extra / 4 unverifiable): the presentation deltas (checklist progress bar + drawn round ticks + strikethrough, marker-band highlight, empty-state tile/centring, file cards above the text with Quick Look row + provenance, serif Aa, weekday timestamps, swatch order/size), the custom gear menu, folder home (All Notes / Pinned rows, bottom-bar gear), the notes bottom bar (fold-all + overflow with sort + folder export), the five-pane Settings window, Compact density, the Wide step + folder rail, drag-reorder, per-display side memory, cursor-leave grace, the drop-target state, linked (not copied) file drops for new non-image files, and the one-press Esc close (a deliberate deviation from the package's Compact ladder, at Femi's direction). NOT fixed: the package's "three built-in themes" (prose only — no names or values exist to build to), the unverifiable dark note colours / heading scale, folder drag-reorder, and edge drag-resize (item 3). Kept despite being extras: Export Note, folder pinning, Check for Updates, the loading screen.
+- [ ] **27. Folder drag-reorder** — notes got drag-reorder in v0.4.0 (item 6); folders did not (called out in item 26's not-built list). Same press-and-hold pattern on the folder home, permuting the folders' existing sort order. Small; pairs naturally with the v0.5 polish stretch.
+- [ ] **28. Built-in themes** — the design package mentions "three built-in themes" in prose only: no names, no values, nothing to build to (item 26). Blocked on a spec, not on code — if themes are wanted, the next step is a small design pass naming them and setting their tokens, then this becomes a theme-picker in Settings → Appearance.
 
 ## Version arc
 
-- **v0.1.x — stability & confirmation.** The launch-crash fix confirmed on a real Mac, the confirmation checklist below closed out, and small fixes from the first real use. No new features until the panel's launch behaviour is boring.
-- **v0.2 — panel polish.** Opened Nov 25, 2026 with the mockup-fidelity visual pass (v0.2.0, item 24). Remaining in the stretch: drag-resize + Wide step (item 3), per-display side memory (item 4), HTML→Markdown paste (item 5), drag-reorder (item 6).
-- **v1.0 — commercial readiness.** Licensing & trial enforcement (item 14), Developer ID signing + notarization (item 15), trademark clearance completed (item 13), an update mechanism (item 16).
+- **v0.1.x — stability & confirmation. SHIPPED Nov 25, 2026.** The launch-crash fix confirmed on a real Mac (item 1), plus the v0.1.1 performance pass (checks 9–15).
+- **v0.2–v0.4 — fidelity & features. SHIPPED Nov 25, 2026.** The mockup-fidelity visual pass (v0.2.0, item 24), the Settings-crash hotfix (v0.2.1), Check for Updates + loading screen (v0.3.0, items 16/25), and the full fidelity fix pass (v0.4.0, item 26) carrying the Wide step, Compact density, drag-reorder, per-display side memory and the five-pane Settings.
+- **Current — the v0.4.0 confirmation round.** Checks 16–30 on the checklist below, on a real install of v0.4.0. Nothing new starts until this closes.
+- **v0.5 — polish stretch (candidates).** HTML→Markdown paste (item 5), keyboard navigation (item 7), edge drag-resize (rest of item 3), folder drag-reorder (item 27), library export + import (rest of item 8).
+- **v1.0 — commercial readiness.** Licensing & trial enforcement (item 14), Developer ID signing + notarization (item 15), trademark clearance completed (item 13). The update mechanism that was planned here shipped early, in v0.3.0 (item 16).
 - **V1.1 — CloudKit sync.** Opt-in sync over the existing store (item 17), conflict strategy designed first.
-- **V2 — bigger shapes.** Markdown tables (item 18), nested folders (item 19), iOS companion exploration (item 23).
+- **V2 — bigger shapes.** Markdown tables (item 18), nested folders (item 19), iOS companion exploration (item 23), themes if specced (item 28).
 
 ## Settled decisions (adopted Nov 25, 2026 — all 8)
 
@@ -58,9 +75,13 @@ register's recommendations.
 
 ## Confirmation checklist — for Femi's next Mac session
 
-Written for the build after v0.1.0 (the one carrying the launch-crash
-fix). Nothing here is confirmed until it has been seen on the Mac —
-that discipline is the whole point of this list.
+Nothing here is confirmed until it has been seen on the Mac — that
+discipline is the whole point of this list. **The live round is the
+v0.4.0 install: checks 16–30** (checks 22–30 cover the v0.3.0/v0.4.0
+features; 16–20 re-verify the v0.2.0 visuals they build on). Checks
+1–15 belong to the v0.1.x rounds — the launch group (1–8) passed with
+the fixed build on Nov 25, 2026; the performance group (9–15) is kept
+as the regression set to re-run whenever the editor or store changes.
 
 **Launch (the crash check)**
 1. Quit fully (`pkill -x SilverNotes`), then double-click the app in Applications → on this build's first launch the panel slides in once. The app must still be running afterwards — check the menu-bar note icon is present a few seconds later.
