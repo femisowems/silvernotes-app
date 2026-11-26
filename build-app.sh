@@ -17,6 +17,17 @@ MIN_MACOS="13.0"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
 
+# Test gate: the GitHub Actions workflow invokes THIS script (the
+# workflow file itself just runs `bash build-app.sh`), so the XCTest
+# suite runs here, before any build work. A failing test aborts the
+# script (set -e, plus the explicit exit below) — CI goes red and no
+# artifact is produced.
+echo "== Running SilverNotes tests =="
+if ! swift test; then
+  echo "ERROR: test suite failed — aborting build" >&2
+  exit 1
+fi
+
 echo "==> Building release binary (swift build -c release)…"
 swift build -c release
 BIN_PATH="$(swift build -c release --show-bin-path)/$APP_NAME"

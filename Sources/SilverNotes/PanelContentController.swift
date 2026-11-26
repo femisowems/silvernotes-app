@@ -25,7 +25,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private(set) var presentation: Presentation = .folders
     weak var activeCard: NoteCardView?
 
-    private let store = NoteStore.shared
+    private let store: NoteStore
     private let headerView = NSView()
     private let pillView = NSView()
     private let captionLabel = NSTextField(labelWithString: "")
@@ -71,6 +71,20 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
 
     private var isWide: Bool { Preferences.panelWidth == .wide }
     private var isCompact: Bool { Preferences.density == .compact }
+
+    /// `store` is a test seam: production call sites use the default
+    /// (the shared store); tests inject a store rooted in a temporary
+    /// directory so they can seed it and drive the real controller
+    /// against the seeded data.
+    init(store: NoteStore = .shared) {
+        self.store = store
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        self.store = .shared
+        super.init(coder: coder)
+    }
 
     override func loadView() {
         let root = PanelRootView(frame: NSRect(x: 0, y: 0, width: 380, height: 600))
@@ -974,7 +988,9 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         scrollToTop()
     }
 
-    @objc private func openTrash() {
+    // Internal (not private) so the population tests can drive the
+    // Trash presentation directly, like openFolder/openAllNotes.
+    @objc func openTrash() {
         presentation = .trash
         reload()
         scrollToTop()

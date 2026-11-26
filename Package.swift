@@ -15,6 +15,11 @@ let package = Package(
         .executableTarget(
             name: "SilverNotes",
             path: "Sources/SilverNotes"
+        ),
+        .testTarget(
+            name: "SilverNotesTests",
+            dependencies: ["SilverNotes"],
+            path: "Tests/SilverNotesTests"
         )
     ]
 )

@@ -40,8 +40,14 @@ final class NoteStore {
     private var saveTimer: Timer?
     private var lastBackupAt: Date = .distantPast
 
-    private init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    /// `baseDirectory` is a test seam: production passes nil and gets
+    /// the Application Support default below; tests pass a temporary
+    /// directory so a store can be built (and reloaded) against
+    /// throwaway storage. The "SilverNotes" component is appended
+    /// either way, exactly as the default path has always been built.
+    init(baseDirectory: URL? = nil) {
+        let base = baseDirectory
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         rootDirectory = base.appendingPathComponent("SilverNotes", isDirectory: true)
     }

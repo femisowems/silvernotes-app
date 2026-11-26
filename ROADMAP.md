@@ -90,6 +90,17 @@ features; 16–20 re-verify the v0.2.0 visuals they build on). Checks
 the fixed build on Nov 25, 2026; the performance group (9–15) is kept
 as the regression set to re-run whenever the editor or store changes.
 
+**Verification policy (Nov 26, 2026).** Per-push verification is now
+automated: CI runs the XCTest suite in `Tests/SilverNotesTests` —
+NoteStore logic, MarkdownEngine render invariants, and headless
+list-population tests that drive the real panel controller — as a
+gate inside `build-app.sh`, and a failing suite fails the build
+before any artifact is produced. The manual checklist below is
+therefore reserved for milestone rounds (the items automation cannot
+judge: the system-wide hotkey and focus behaviour, the self-updater's
+install path, and visual fidelity against Variation A), not re-run
+after every release.
+
 **Launch (the crash check)**
 1. Quit fully (`pkill -x SilverNotes`), then double-click the app in Applications → on this build's first launch the panel slides in once. The app must still be running afterwards — check the menu-bar note icon is present a few seconds later.
 2. Open `~/Library/Logs/DiagnosticReports` → **no new SilverNotes crash report** with a timestamp from this launch. (Three reports from Nov 25, 16:55 are the old build's; anything newer is a failure of this check.)
