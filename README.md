@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.2.1-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.3.0-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,14 +24,14 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.2.1**: the v0.2.0
-> mockup-fidelity visual pass (the panel, cards and chrome now follow
-> the approved design package's tokens, type scale and anatomy) plus
-> a hotfix for a crash on opening Settings. The MVP is **confirmed
-> working** on a real Mac (MacBook Air, macOS 26) as of
-> November 25, 2026 — with a few first-use bugs, which are tracked in
-> [ROADMAP.md](ROADMAP.md).
-> v0.2.1 itself is CI-built and awaiting its on-device confirmation
+> 🚧 **Work in progress** — SilverNotes is at **v0.3.0**: Check for
+> Updates (in Settings and the menu-bar menu, with a verified
+> one-click install) and a launch loading screen, on top of the
+> v0.2.0 mockup-fidelity visual pass and the v0.2.1 Settings hotfix.
+> The MVP is **confirmed working** on a real Mac (MacBook Air,
+> macOS 26) as of November 25, 2026 — with a few first-use bugs,
+> which are tracked in [ROADMAP.md](ROADMAP.md).
+> v0.3.0 itself is CI-built and awaiting its on-device confirmation
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
 > Nothing below claims a feature "works" beyond what the code does;
@@ -349,6 +349,22 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.3.0 (November 25, 2026) — Check for Updates + launch loading
+  screen, CI-built, not yet confirmed on a Mac.** Settings and the
+  menu-bar menu both carry a "Check for Updates…" option; the app
+  also checks silently once after launch and notes an available
+  version on the menu item. An available update installs in one
+  click: the release zip downloads, its SHA-256 is verified against
+  the digest GitHub publishes for that file, and only then is the
+  app bundle swapped (with a backup that rolls back if the swap
+  fails) and relaunched. Nothing downloads or installs without a
+  click. The check reads the GitHub releases directly — no separate
+  update feed to keep in sync. Separately, a cold launch now opens
+  with a brief loading screen (icon, name, "Loading your notes…")
+  tied to the panel's first appearance; it never delays launch
+  beyond ~1.6s and stays out of the way on hidden login starts.
+  The confirmation checklist in [ROADMAP.md](ROADMAP.md) carries
+  the v0.3.0 checks.
 - **v0.2.1 (November 25, 2026) — Settings crash hotfix, CI-built,
   not yet confirmed on a Mac.** Opening Settings crashed the app on
   first open — a bug present since v0.1.0: the window refreshed its
