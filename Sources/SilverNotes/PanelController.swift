@@ -92,7 +92,7 @@ final class PanelController: NSObject {
     }
 
     private func buildSliver() {
-        sliver = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 14, height: 120),
+        sliver = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 22, height: 118),
                          styleMask: [.borderless, .nonactivatingPanel],
                          backing: .buffered, defer: false)
         sliver.isFloatingPanel = true
@@ -134,10 +134,10 @@ final class PanelController: NSObject {
     private func positionSliver() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let side = Preferences.panelSide
-        let height: CGFloat = 120
+        let height: CGFloat = 118
         let y = screen.visibleFrame.midY - height / 2
-        let x = side == .right ? screen.frame.maxX - 14 : screen.frame.minX
-        sliver.setFrame(NSRect(x: x, y: y, width: 14, height: height), display: true)
+        let x = side == .right ? screen.frame.maxX - 22 : screen.frame.minX
+        sliver.setFrame(NSRect(x: x, y: y, width: 22, height: height), display: true)
         (sliver.contentView as? SliverView)?.side = side
     }
 
@@ -172,8 +172,14 @@ final class PanelController: NSObject {
 
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if reduceMotion {
+            // Reduce Motion: no slide — a 120 ms crossfade in place.
             panel.setFrame(target, display: true)
+            panel.alphaValue = 0
             panel.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 1
+            }
             return
         }
         // Start just off-screen, order front, then animate on the NEXT
@@ -185,8 +191,8 @@ final class PanelController: NSObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isPanelVisible else { return }
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.4
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1.0)
+                context.duration = 0.28
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
                 self.panel.animator().setFrame(target, display: true)
             } completionHandler: { [weak self] in
                 guard let self = self, self.isPanelVisible else { return }
@@ -211,9 +217,28 @@ final class PanelController: NSObject {
             return
         }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if reduceMotion {
+            // Reduce Motion: no slide — a 120 ms crossfade out, then the
+            // usual cleanup (alpha restored so the next show isn't
+            // invisible).
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 0
+            } completionHandler: { [weak self] in
+                guard let self = self, !self.isPanelVisible else { return }
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+                self.positionSliver()
+                self.sliver.orderFront(nil)
+                if let app = self.previousApp, app != NSRunningApplication.current {
+                    app.activate(options: [])
+                }
+            }
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = reduceMotion ? 0.01 : 0.35
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1.0)
+            context.duration = 0.28
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.32, 0.72, 0, 1)
             panel.animator().setFrame(panelFrame(on: screen, visible: false), display: true)
         } completionHandler: { [weak self] in
             guard let self = self, !self.isPanelVisible else { return }
@@ -407,7 +432,7 @@ private final class SliverView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath()
-        let r: CGFloat = 6
+        let r: CGFloat = 10
         if side == .right {
             path.move(to: NSPoint(x: bounds.maxX, y: bounds.minY))
             path.line(to: NSPoint(x: bounds.minX + r, y: bounds.minY))
@@ -426,6 +451,9 @@ private final class SliverView: NSView {
         path.close()
         SNTheme.sliverBackground.setFill()
         path.fill()
+        SNTheme.sliverBorder.setStroke()
+        path.lineWidth = 1
+        path.stroke()
 
         let chevron = side == .right ? "‹" : "›"
         let attrs: [NSAttributedString.Key: Any] = [

@@ -40,7 +40,11 @@ enum MarkdownEngine {
 
         switch mode {
         case .plain:
-            attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText], range: full)
+            attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText,
+                                .paragraphStyle: SNTheme.bodyParagraphStyle], range: full)
+            if let titleRange = firstContentLineRange(in: source) {
+                attr.addAttributes([.font: SNTheme.titleFont], range: titleRange)
+            }
             return MarkdownRenderResult(attributed: attr, tasks: [])
         case .code:
             attr.addAttributes([.font: SNTheme.codeFont, .foregroundColor: SNTheme.primaryText], range: full)
@@ -49,7 +53,12 @@ enum MarkdownEngine {
             break
         }
 
-        attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText], range: full)
+        attr.addAttributes([.font: SNTheme.bodyFont, .foregroundColor: SNTheme.primaryText,
+                            .paragraphStyle: SNTheme.bodyParagraphStyle], range: full)
+
+        // The note's first content line is its title (design package):
+        // styled inside this same pass — a heading on that line wins.
+        let titleRange = firstContentLineRange(in: source)
 
         let ns = source as NSString
         var tasks: [TaskMarker] = []
@@ -109,8 +118,14 @@ enum MarkdownEngine {
             } else if isListLine(trimmed) {
                 // Keep the bullet/number visible but tint it; inline-format the rest.
                 attr.addAttributes([.foregroundColor: SNTheme.primaryText], range: lineRange)
+                if titleRange?.location == lineStart {
+                    attr.addAttributes([.font: SNTheme.titleFont], range: lineRange)
+                }
                 applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup)
             } else {
+                if titleRange?.location == lineStart {
+                    attr.addAttributes([.font: SNTheme.titleFont], range: lineRange)
+                }
                 applyInline(attr, ns: ns, range: lineRange, showMarkup: showMarkup)
             }
 
@@ -191,10 +206,13 @@ enum MarkdownEngine {
             conceal(attr, range: closeRange, showMarkup: false)
         }
         let checked = task.marker.isChecked
+        // Done reads as a white tick on the task green; open is a quiet
+        // glyph on the code tint (attribute-only: the glyph is the literal
+        // source character in its tinted cell).
         attr.addAttributes([
-            .font: NSFont.systemFont(ofSize: 14, weight: .bold),
-            .foregroundColor: checked ? SNTheme.taskDone : SNTheme.secondaryText,
-            .backgroundColor: SNTheme.codeBackground
+            .font: SNTheme.boldBodyFont,
+            .foregroundColor: checked ? NSColor.white : SNTheme.secondaryText,
+            .backgroundColor: checked ? SNTheme.taskDone : SNTheme.codeBackground
         ], range: task.marker.checkboxCharRange)
     }
 
@@ -307,7 +325,7 @@ enum MarkdownEngine {
         guard pair.contentRange.length > 0 else { return }
         switch pair.kind {
         case "**":
-            attr.addAttributes([.font: NSFont.systemFont(ofSize: 14, weight: .bold)], range: pair.contentRange)
+            attr.addAttributes([.font: SNTheme.boldBodyFont], range: pair.contentRange)
         case "*", "_":
             attr.addAttributes([.font: italicFont()], range: pair.contentRange)
         case "~~":
@@ -340,6 +358,25 @@ enum MarkdownEngine {
     }
 
     // MARK: Helpers
+
+    /// Range of the first line with any non-whitespace content — the
+    /// note's title line. Nil for an empty note.
+    private static func firstContentLineRange(in source: String) -> NSRange? {
+        let ns = source as NSString
+        var lineStart = 0
+        while lineStart < ns.length {
+            let remaining = NSRange(location: lineStart, length: ns.length - lineStart)
+            let newlineRange = ns.range(of: "\n", options: [], range: remaining)
+            let lineLength = (newlineRange.location == NSNotFound) ? remaining.length : newlineRange.location - lineStart
+            let line = ns.substring(with: NSRange(location: lineStart, length: lineLength))
+            if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                return NSRange(location: lineStart, length: lineLength)
+            }
+            if newlineRange.location == NSNotFound { break }
+            lineStart = newlineRange.location + 1
+        }
+        return nil
+    }
 
     /// Hides a marker range visually (tiny, transparent) without removing the
     /// characters — the source stays intact and editable. When the user has

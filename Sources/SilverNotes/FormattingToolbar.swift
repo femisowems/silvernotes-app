@@ -29,7 +29,7 @@ final class FormattingToolbar: NSPanel {
         bar.blendingMode = .withinWindow
         bar.state = .active
         bar.wantsLayer = true
-        bar.layer?.cornerRadius = 8
+        bar.layer?.cornerRadius = 9
         bar.layer?.masksToBounds = true
 
         let stack = NSStackView(frame: NSRect(x: 6, y: 3, width: 240, height: 26))

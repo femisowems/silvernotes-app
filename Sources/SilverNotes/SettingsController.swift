@@ -32,6 +32,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         func label(_ text: String, y: CGFloat, bold: Bool = false) -> NSTextField {
             let field = NSTextField(labelWithString: text)
             field.font = bold ? NSFont.systemFont(ofSize: 13, weight: .semibold) : NSFont.systemFont(ofSize: 12)
+            field.textColor = SNTheme.primaryText
             field.frame = NSRect(x: 20, y: y, width: 340, height: 18)
             content.addSubview(field)
             return field
@@ -65,10 +66,11 @@ final class SettingsController: NSObject, NSWindowDelegate {
         refreshLaunchAtLoginState()
 
         statusLabel = label("", y: 92)
-        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.textColor = SNTheme.secondaryText
 
         _ = label("Toggle the panel from anywhere: Control + Option + Command + Space.", y: 62)
-        let version = label("SilverNotes v0.1.1 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
+        let version = label("SilverNotes v0.2.0 — $19.99 per major version, 30-day trial (licensing is not enforced in this build). Local-first: your notes never leave this Mac.", y: 16)
+        version.textColor = SNTheme.secondaryText
         version.maximumNumberOfLines = 2
         version.lineBreakMode = .byWordWrapping
         version.frame = NSRect(x: 20, y: 8, width: 340, height: 34)

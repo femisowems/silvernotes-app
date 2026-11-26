@@ -57,6 +57,7 @@ final class NoteTextView: NSTextView {
         isAutomaticSpellingCorrectionEnabled = false
         isContinuousSpellCheckingEnabled = true
         drawsBackground = false
+        defaultParagraphStyle = SNTheme.bodyParagraphStyle
         textContainerInset = NSSize(width: 6, height: 6)
         isVerticallyResizable = true
         isHorizontallyResizable = false
@@ -70,11 +71,19 @@ final class NoteTextView: NSTextView {
         switch mode {
         case .standard, .plain:
             font = SNTheme.bodyFont
+            // Typing attributes mirror the render pass (1.5 line height
+            // included) so freshly typed text doesn't jump when the
+            // debounced re-render lands.
+            typingAttributes = [.font: SNTheme.bodyFont,
+                                .foregroundColor: SNTheme.primaryText,
+                                .paragraphStyle: SNTheme.bodyParagraphStyle]
             isAutomaticQuoteSubstitutionEnabled = false
             isAutomaticDashSubstitutionEnabled = false
             isContinuousSpellCheckingEnabled = true
         case .code:
             font = SNTheme.codeFont
+            typingAttributes = [.font: SNTheme.codeFont,
+                                .foregroundColor: SNTheme.primaryText]
             isAutomaticQuoteSubstitutionEnabled = false
             isAutomaticDashSubstitutionEnabled = false
             isAutomaticTextReplacementEnabled = false
