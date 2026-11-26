@@ -207,7 +207,7 @@ final class PanelController: NSObject {
             // Reduce Motion: no slide — a 120 ms crossfade in place.
             panel.setFrame(target, display: true)
             panel.alphaValue = 0
-            panel.orderFront(nil)
+            panel.makeKeyAndOrderFront(nil)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.12
                 panel.animator().alphaValue = 1
@@ -219,7 +219,7 @@ final class PanelController: NSObject {
         // can silently drop the animation, leaving the panel parked at
         // its off-screen start frame while state says "visible".
         panel.setFrame(panelFrame(on: screen, visible: false), display: false)
-        panel.orderFront(nil)
+        panel.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.isPanelVisible else { return }
             NSAnimationContext.runAnimationGroup { context in
@@ -232,7 +232,7 @@ final class PanelController: NSObject {
                 // end up exactly on target and verifiably on-screen.
                 if self.panel.frame != target || !self.panelIsOnScreen {
                     self.panel.setFrame(target, display: true)
-                    self.panel.orderFront(nil)
+                    self.panel.makeKeyAndOrderFront(nil)
                 }
                 print("SilverNotes: show() settled — frame \(self.panel.frame), onScreen \(self.panelIsOnScreen)")
             }

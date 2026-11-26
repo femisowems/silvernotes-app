@@ -1,9 +1,10 @@
 #!/bin/bash
-# SilverNotes v0.5.0 — build a release binary and wrap it in a SilverNotes.app bundle.
-# v0.5.0 is the Nov 26 audit fix pass (Compact at the standard 34%
-# width, Underline on the formatting toolbar + Aa popover, first-run
-# welcome empty state, New Folder row in the Wide rail), and it
-# removes the old Settings price line entirely.
+# SilverNotes v0.5.1 — build a release binary and wrap it in a SilverNotes.app bundle.
+# v0.5.1 is the Nov 26 bug-fix release: Standard-density note lists
+# render again (card population rebuilt deterministically), the panel
+# becomes the key window on open so keyboard handling works from the
+# first open, Compact double-click expansion is fixed, and an
+# uncaught-exception logger is added.
 # Run on a Mac from inside the silvernotes-app folder:  ./build-app.sh
 # Result: dist/SilverNotes.app  (drag it into /Applications)
 set -euo pipefail
@@ -11,7 +12,7 @@ cd "$(dirname "$0")"
 
 APP_NAME="SilverNotes"
 BUNDLE_ID="io.starterdev.silvernotes"
-VERSION="0.5.0"
+VERSION="0.5.1"
 MIN_MACOS="13.0"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"

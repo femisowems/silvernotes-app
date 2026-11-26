@@ -13,11 +13,36 @@ enum SilverNotesMain {
     }
 }
 
+/// Diagnostic insurance (v0.5.1): records any uncaught NSException —
+/// name, reason, call stack, timestamp — to
+/// ~/Library/Application Support/SilverNotes/last-exception.log
+/// (overwritten each time). Purely observational: it does not rethrow,
+/// swallow, or otherwise alter the exception's handling.
+private func silverNotesUncaughtExceptionHandler(_ exception: NSException) {
+    let formatter = ISO8601DateFormatter()
+    var lines = [
+        "timestamp: \(formatter.string(from: Date()))",
+        "name: \(exception.name.rawValue)",
+        "reason: \(exception.reason ?? "")",
+        "callStackSymbols:",
+    ]
+    lines.append(contentsOf: exception.callStackSymbols)
+    let text = lines.joined(separator: "\n") + "\n"
+    let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("SilverNotes", isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try? text.write(to: directory.appendingPathComponent("last-exception.log"),
+                    atomically: true, encoding: .utf8)
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // First thing: arm the uncaught-exception logger before any
+        // other launch work can run.
+        NSSetUncaughtExceptionHandler(silverNotesUncaughtExceptionHandler)
         Preferences.registerDefaults()
         NoteStore.shared.load()
         PanelController.shared.setUp()

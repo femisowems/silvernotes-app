@@ -53,20 +53,13 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private let dropOverlay = NSView()
     private var dropOverlayLabel: NSTextField!
 
-    /// Live card views keyed by "<mode>:<noteID>" (the mode prefix keeps
-    /// a note's Trash wrapper distinct from its plain card), plus the
-    /// note each was last configured with. reload() diffs against these
-    /// maps so a structural change creates, removes, and reconfigures
-    /// only the cards it actually affects — v0.1.0 rebuilt every card in
-    /// the folder on every change.
-    private var cardViews: [String: NSView] = [:]
-    private var cardNotes: [String: SNNote] = [:]
     private var searchWorkItem: DispatchWorkItem?
-    /// The "show markup" preference as of the last card configuration.
-    /// It lives outside the note model, so the diff tracks it separately:
-    /// when it flips, every visible card reconfigures even though no
-    /// note changed.
-    private var lastMarkupSetting: Bool?
+    /// Live Compact row views keyed by note ID, populated by
+    /// updateCompactRows. Selection changes restyle these rows in
+    /// place (see refreshCompactSelection) instead of rebuilding the
+    /// list — a rebuild on selection destroyed the row view between
+    /// the two clicks of a double-click, so expansion never fired.
+    private var compactRowViews: [UUID: CompactRowView] = [:]
     /// The notes backing the current list presentation, in display
     /// order — fold-all, reorder, and export all act on exactly these.
     private var currentListNotes: [SNNote] = []
@@ -560,6 +553,8 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             newButton.toolTip = "Empty Trash"
             let trashed = store.trashedNotes
             currentListNotes = trashed
+            // Bottom bar first (v0.5.1), for the same reason as showNotes.
+            updateBottomBar(countText: "Notes are permanently deleted after 30 days")
             if trashed.isEmpty {
                 clearStack()
                 let empty = emptyMessageState(headline: "Trash is empty",
@@ -570,7 +565,6 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             } else {
                 updateCardStack(notes: trashed, trash: true)
             }
-            updateBottomBar(countText: "Notes are permanently deleted after 30 days")
 
         case .search(let query):
             updateHeader(backVisible: true, captionVisible: true)
@@ -600,10 +594,14 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     }
 
     /// Shared path for the note-list presentations: sort, remember the
-    /// list, render cards (or compact rows), update the bottom bar.
+    /// list, update the bottom bar, then render cards (or compact rows).
     private func showNotes(_ notes: [SNNote], emptyState: ListEmptyState) {
         let display = displaySorted(notes)
         currentListNotes = display
+        // The count is applied BEFORE population (v0.5.1): if populating
+        // the stack ever fails, the bottom bar still tells the truth
+        // instead of keeping the previous view's stale text.
+        updateBottomBar(countText: "\(display.count) note\(display.count == 1 ? "" : "s")")
         if display.isEmpty {
             clearStack()
             let empty: NSView
@@ -621,7 +619,6 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         } else {
             updateCardStack(notes: display, trash: false)
         }
-        updateBottomBar(countText: "\(display.count) note\(display.count == 1 ? "" : "s")")
     }
 
     /// Applies the overflow menu's sort choice. Manual order is the
@@ -650,75 +647,27 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         view.heightAnchor.constraint(equalTo: scrollView.heightAnchor, constant: -50).isActive = true
     }
 
-    /// Removes every arranged subview and forgets every cached card.
+    /// Removes every arranged subview and forgets every cached row.
     private func clearStack() {
         for sub in stackView.arrangedSubviews {
             stackView.removeArrangedSubview(sub)
             sub.removeFromSuperview()
         }
-        cardViews.removeAll()
-        cardNotes.removeAll()
+        compactRowViews.removeAll()
     }
 
-    /// Brings the card stack in line with `notes`, diffing by note ID:
-    /// cards for departed notes are removed, cards for new notes are
-    /// created, surviving cards keep their views (only their order in
-    /// the stack is re-applied) and are reconfigured ONLY if their note
-    /// changed since the last configuration.
+    /// Populates the card stack with `notes`, in order. v0.5.1 replaced
+    /// the v0.1.1 diffed population with this deterministic rebuild —
+    /// the same clear-then-add pattern the folder home and Compact rows
+    /// use — after the diffed path was found to abort silently during
+    /// population on a real install, leaving Standard-density lists
+    /// empty while the store counts stayed correct.
     private func updateCardStack(notes: [SNNote], trash: Bool) {
-        let prefix = trash ? "trash" : "note"
-        let wantedKeys = notes.map { "\(prefix):\($0.id.uuidString)" }
-        let wanted = Set(wantedKeys)
-        let markup = UserDefaults.standard.bool(forKey: Preferences.showMarkupKey)
-        let markupChanged = lastMarkupSetting != markup
-        lastMarkupSetting = markup
-
-        // Cards whose notes left this presentation: remove and forget.
-        for key in cardViews.keys.filter({ !wanted.contains($0) }) {
-            if let view = cardViews[key] {
-                stackView.removeArrangedSubview(view)
-                view.removeFromSuperview()
-            }
-            cardViews.removeValue(forKey: key)
-            cardNotes.removeValue(forKey: key)
-        }
-        // Anything else in the stack (empty-state labels, folder rows)
-        // does not belong in a card presentation.
-        let wantedViews = Set(wantedKeys.compactMap { cardViews[$0] })
-        for sub in stackView.arrangedSubviews where !wantedViews.contains(sub) {
-            stackView.removeArrangedSubview(sub)
-            sub.removeFromSuperview()
-        }
-
-        // Build the desired order, creating/configuring only what's new
-        // or changed. (A newly created card configures itself in init.)
-        var ordered: [NSView] = []
-        var fresh: Set<String> = []
-        for (index, note) in notes.enumerated() {
-            let key = wantedKeys[index]
-            if let existing = cardViews[key] {
-                if (cardNotes[key] != note || markupChanged), let cardView = cardView(in: existing) {
-                    cardView.configure(with: note)
-                    cardNotes[key] = note
-                }
-                ordered.append(existing)
-            } else {
-                let view = card(for: note, trash: trash)
-                cardViews[key] = view
-                cardNotes[key] = note
-                fresh.insert(key)
-                ordered.append(view)
-            }
-        }
-
-        // Re-apply the order: detach each surviving view from the
-        // arranged list (it stays in the hierarchy, constraints intact)
-        // and re-add in presentation order. Only fresh cards need their
-        // width pinned — survivors kept the constraint from creation.
-        for view in ordered { stackView.removeArrangedSubview(view) }
-        for (index, view) in ordered.enumerated() {
-            stackView.addArrangedSubview(view)
-            if fresh.contains(wantedKeys[index]) { pinWidth(view) }
+        clearStack()
+        for note in notes {
+            let v = card(for: note, trash: trash)
+            stackView.addArrangedSubview(v)
+            pinWidth(v)
         }
     }
 
@@ -805,9 +754,10 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                 pinWidth(cardView)
             } else {
                 let row = CompactRowView(note: note, selected: note.id == compactSelectedID)
+                compactRowViews[note.id] = row
                 row.onSelect = { [weak self] in
                     self?.compactSelectedID = note.id
-                    self?.reload()
+                    self?.refreshCompactSelection()
                 }
                 row.onOpen = { [weak self] in
                     self?.compactSelectedID = note.id
@@ -818,6 +768,17 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                 stackView.addArrangedSubview(row)
                 pinWidth(row)
             }
+        }
+    }
+
+    /// Restyles the live Compact rows for the current selection, in
+    /// place. Selection used to reload() (v0.5.1 fix): the rebuild
+    /// destroyed the clicked row between the two clicks of a
+    /// double-click, so the row's double-click recogniser never saw a
+    /// pair and expansion into the full card never fired.
+    private func refreshCompactSelection() {
+        for (id, row) in compactRowViews {
+            row.setSelected(id == compactSelectedID)
         }
     }
 
@@ -1444,7 +1405,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         let current = currentListNotes.firstIndex(where: { $0.id == compactSelectedID }) ?? 0
         let next = min(max(current + delta, 0), currentListNotes.count - 1)
         compactSelectedID = currentListNotes[next].id
-        reload()
+        refreshCompactSelection()
     }
 }
 
@@ -1512,13 +1473,7 @@ private final class CompactRowView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 8
-        if selected {
-            layer?.backgroundColor = SNTheme.cardBackground.cgColor
-            layer?.borderWidth = 1.5
-            layer?.borderColor = SNTheme.accent.withAlphaComponent(0.5).cgColor
-        } else {
-            layer?.backgroundColor = SNTheme.cardBackground.withAlphaComponent(0.65).cgColor
-        }
+        setSelected(selected)
 
         let pin = NSImageView(image: NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned") ?? NSImage())
         pin.contentTintColor = SNTheme.pinnedActive
@@ -1560,6 +1515,21 @@ private final class CompactRowView: NSView {
     required init?(coder: NSCoder) {
         // Rows are only ever built in code; this exists to satisfy NSCoding.
         super.init(coder: coder)
+    }
+
+    /// Applies the selected / unselected layer styling. Extracted from
+    /// init (v0.5.1) so selection changes can restyle a live row in
+    /// place instead of rebuilding the row list.
+    func setSelected(_ selected: Bool) {
+        if selected {
+            layer?.backgroundColor = SNTheme.cardBackground.cgColor
+            layer?.borderWidth = 1.5
+            layer?.borderColor = SNTheme.accent.withAlphaComponent(0.5).cgColor
+        } else {
+            layer?.backgroundColor = SNTheme.cardBackground.withAlphaComponent(0.65).cgColor
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+        }
     }
 
     private static let timeFormatter: DateFormatter = {
