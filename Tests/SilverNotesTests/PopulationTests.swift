@@ -163,26 +163,51 @@ final class PopulationTests: XCTestCase {
 
     // MARK: Compact density
 
-    func testCompactAllNotesPopulatesRows() throws {
+    func testCompactAllNotesPopulatesCards() throws {
         Preferences.density = .compact
         controller.openAllNotes()
         let stack = try XCTUnwrap(findCardStack())
         XCTAssertEqual(stack.arrangedSubviews.count, 4,
-                       "Compact All Notes must hold one entry per live note")
+                       "Compact All Notes must hold one card per live note")
         assertBottomBar("4 notes")
     }
 
-    func testCompactDefaultsToFirstNoteExpanded() throws {
+    func testCompactOpensWithEveryNoteExpanded() throws {
         Preferences.density = .compact
+        controller.openAllNotes()
+        var stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.count, 4,
+                       "Compact All Notes must hold one entry per live note")
+        XCTAssertTrue(stack.arrangedSubviews.allSatisfy { $0 is NoteCardView },
+                      "every note renders expanded as a full card on open")
+        controller.openFolder(folderA.id)
+        stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.count, 3,
+                       "Compact folder view must hold one entry per live note")
+        XCTAssertTrue(stack.arrangedSubviews.allSatisfy { $0 is NoteCardView },
+                      "every note renders expanded on open, including after switching views")
+        controller.openAllNotes()
+        stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.count, 4,
+                       "Compact All Notes must hold one entry per live note")
+        XCTAssertTrue(stack.arrangedSubviews.allSatisfy { $0 is NoteCardView },
+                      "every note renders expanded on open, including after switching back")
+    }
+
+    func testCompactFoldedNoteRendersAsRow() throws {
+        Preferences.density = .compact
+        controller.openAllNotes()
+        let note = try XCTUnwrap(store.allNotes.first)
+        store.setNoteFolded(id: note.id, folded: true)
         controller.openAllNotes()
         let stack = try XCTUnwrap(findCardStack())
         XCTAssertEqual(stack.arrangedSubviews.count, 4,
                        "Compact All Notes must hold one entry per live note")
-        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 1,
-                       "the top note opens expanded into its full card")
+        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 3,
+                       "unfolded notes keep rendering as full cards")
         // CompactRowView is private to PanelContentController.swift,
-        // so the rows are counted as the non-card remainder.
-        XCTAssertEqual(stack.arrangedSubviews.filter { !($0 is NoteCardView) }.count, 3,
-                       "the remaining notes stay as one-line rows")
+        // so the folded note's row is counted as the non-card remainder.
+        XCTAssertEqual(stack.arrangedSubviews.filter { !($0 is NoteCardView) }.count, 1,
+                       "the manually folded note renders as a one-line row")
     }
 }
