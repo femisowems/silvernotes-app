@@ -1831,6 +1831,7 @@ private final class RailRowView: NSView {
     }
 
     required init?(coder: NSCoder) {
+        isSelected = false
         super.init(coder: coder)
     }
 
