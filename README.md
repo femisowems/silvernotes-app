@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.6.0-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.6.1-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,7 +24,10 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.6.0**: the
+> 🚧 **Work in progress** — SilverNotes is at **v0.6.1**: the
+> everything-expanded default reaches Compact (a Compact list
+> opens with the top note expanded instead of every note
+> collapsed to a row), on top of v0.6.0, the
 > Variation A visual pass (header pill, cards, folder rows, bottom
 > bar, gear menu, formatting toolbar and Settings aligned to the
 > final mockup's exact values; the search field no longer clips
@@ -45,7 +48,7 @@ nothing ever leaves the machine.
 > which are tracked in [ROADMAP.md](ROADMAP.md).
 > v0.5.0 was installed and used on a real Mac on November 26, 2026,
 > via the app's own Check for Updates — the self-update path
-> confirmed working end to end. v0.5.1 and v0.6.0 are CI-built;
+> confirmed working end to end. v0.5.1, v0.6.0 and v0.6.1 are CI-built;
 > their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
@@ -402,6 +405,13 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.6.1 (November 27, 2026) — the everything-expanded default
+  reaches Compact, CI-built, on-device confirmation pending.** A
+  Compact list now opens with the top note expanded into its full
+  card instead of every note collapsed to a one-line row; the
+  v0.6.0 expanded default had only ever applied to Standard cards.
+  First release shipped through the new develop-branch flow
+  (PR #1, CI-gated); the test suite is now 20 tests.
 - **v0.6.0 (November 26, 2026) — the Variation A visual pass,
   CI-built, on-device confirmation pending.** 73 properties were
   measured against the final mockup and 56 aligned: the solid
