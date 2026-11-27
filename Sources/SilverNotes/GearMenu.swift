@@ -5,14 +5,19 @@ import AppKit
 /// radius 10, near-opaque surface, 12.5 pt items, 10.5 pt uppercase
 /// section labels in the tertiary grey, accent checkmarks, 11.5 pt
 /// shortcut text, an accent hover wash, and a 140 ms appear animation
-/// (scale 0.97 → 1 + fade). Same items and actions as the old NSMenu:
-/// Pin ⌥⌘P, Fold ⌥⌘⏎, the COLOUR swatch row, MODE Standard/Plain/Code
-/// ⌥⌘1/2/3, Clear Completed Tasks, Export Note as Markdown….
+/// (scale 0.97 → 1 + fade). Items: Pin ⌥⌘P, Fold ⌥⌘⏎, Duplicate
+/// (when a handler is supplied), the COLOUR swatch row, MODE
+/// Standard/Plain/Code ⌥⌘1/2/3, Clear Completed Tasks, Export Note
+/// as Markdown….
 final class GearMenu: NSObject {
 
     struct Actions {
         var onPin: () -> Void
         var onFold: () -> Void
+        /// Optional: the Duplicate row is only built when a handler is
+        /// supplied (cards in the Trash pass nil — a trashed note is
+        /// restored or deleted, not duplicated).
+        var onDuplicate: (() -> Void)? = nil
         var onColor: (NoteColorToken) -> Void
         var onMode: (NoteMode) -> Void
         var onClearCompletedTasks: () -> Void
@@ -123,6 +128,9 @@ final class GearMenu: NSObject {
 
         row("Pin", checked: isPinned, shortcut: "⌥⌘P") { [weak self] in self?.actions?.onPin() }
         row("Fold", checked: isFolded, shortcut: "⌥⌘⏎") { [weak self] in self?.actions?.onFold() }
+        if actions.onDuplicate != nil {
+            row("Duplicate", checked: false, shortcut: nil) { [weak self] in self?.actions?.onDuplicate?() }
+        }
         separator()
         sectionLabel("Colour")
         stack.addArrangedSubview(swatchRow(active: color))
