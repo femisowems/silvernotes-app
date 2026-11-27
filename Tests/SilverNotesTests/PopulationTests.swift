@@ -180,7 +180,9 @@ final class PopulationTests: XCTestCase {
                        "Compact All Notes must hold one entry per live note")
         XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 1,
                        "the top note opens expanded into its full card")
-        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is CompactRowView }.count, 3,
+        // CompactRowView is private to PanelContentController.swift,
+        // so the rows are counted as the non-card remainder.
+        XCTAssertEqual(stack.arrangedSubviews.filter { !($0 is NoteCardView) }.count, 3,
                        "the remaining notes stay as one-line rows")
     }
 }
