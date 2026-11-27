@@ -225,4 +225,75 @@ final class PopulationTests: XCTestCase {
         XCTAssertEqual(stack.arrangedSubviews.filter { !($0 is NoteCardView) }.count, 1,
                        "the manually folded note renders as a one-line row")
     }
+
+    // MARK: Appearance changes
+
+    /// Regression guard for the Nov 27 folder-home bug: row surfaces
+    /// are layer-baked CGColors resolved from dynamic theme colors.
+    /// A row built under the light appearance kept its white card
+    /// surface when the system flipped to dark, while its name — an
+    /// NSTextField textColor, which re-resolves live — flipped to
+    /// near-white: white on white. The row must re-bake its surfaces
+    /// when its effective appearance changes.
+    func testFolderRowSurfaceFollowsAppearance() throws {
+        let stack = try XCTUnwrap(findCardStack())
+        // Folder home is showing (the initial presentation). Find
+        // Folder A's row black-box: the arranged subview holding a
+        // text field with the folder's name.
+        let row = try XCTUnwrap(stack.arrangedSubviews.first { arranged in
+            allDescendants(of: arranged).contains {
+                ($0 as? NSTextField)?.stringValue == folderA.name
+            }
+        })
+        let before = try XCTUnwrap(row.layer?.backgroundColor)
+
+        let darkAppearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        let lightAppearance = try XCTUnwrap(NSAppearance(named: .aqua))
+        var darkCard: CGColor?
+        var lightCard: CGColor?
+        var darkTile: CGColor?
+        darkAppearance.performAsCurrentDrawingAppearance {
+            darkCard = SNTheme.cardBackground.cgColor
+            darkTile = SNTheme.accentSoftBackground.cgColor
+        }
+        lightAppearance.performAsCurrentDrawingAppearance {
+            lightCard = SNTheme.cardBackground.cgColor
+        }
+        let darkCardColor = try XCTUnwrap(darkCard)
+        let lightCardColor = try XCTUnwrap(lightCard)
+        // The two variants really are different colors, so the
+        // assertions below cannot pass vacuously.
+        XCTAssertFalse(CGColorEqualToColor(darkCardColor, lightCardColor),
+                       "the card surface must differ between light and dark")
+        XCTAssertTrue(CGColorEqualToColor(before, darkCardColor)
+                        || CGColorEqualToColor(before, lightCardColor),
+                      "the row surface starts as a theme card color")
+
+        // Flip the row to dark. Setting `appearance` should dispatch
+        // viewDidChangeEffectiveAppearance; it is also invoked
+        // directly (the re-apply is idempotent) so the production
+        // override is exercised even if the windowless setter does
+        // not dispatch it in the test host. Both run inside the dark
+        // drawing appearance, so a re-baked CGColor resolves its
+        // dark variant.
+        darkAppearance.performAsCurrentDrawingAppearance {
+            row.appearance = darkAppearance
+            row.viewDidChangeEffectiveAppearance()
+        }
+
+        let after = try XCTUnwrap(row.layer?.backgroundColor)
+        XCTAssertTrue(CGColorEqualToColor(after, darkCardColor),
+                      "the row surface must re-bake to the dark card color")
+        XCTAssertFalse(CGColorEqualToColor(after, lightCardColor),
+                       "the row surface must not keep the light card color")
+
+        // The icon tile bakes the accent-soft surface the same way.
+        // Black-box: it is the first arranged subview of the row's
+        // left stack, which is the row's first subview.
+        let leftStack = try XCTUnwrap(row.subviews.first as? NSStackView)
+        let tile = try XCTUnwrap(leftStack.arrangedSubviews.first)
+        let tileColor = try XCTUnwrap(tile.layer?.backgroundColor)
+        XCTAssertTrue(CGColorEqualToColor(tileColor, try XCTUnwrap(darkTile)),
+                      "the row tile must re-bake to the dark accent-soft color")
+    }
 }

@@ -48,6 +48,10 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private let titleLabel = NSTextField(labelWithString: "Folders")
     private let searchField = NSSearchField()
     private let newButton = NSButton()
+    /// Every button passed to stylePillButton, so an appearance
+    /// change can re-bake their layer backgrounds (see
+    /// refreshChromeSurfaces).
+    private var pillButtons: [NSButton] = []
     private let scrollView = NSScrollView()
     private let stackView = NSStackView()
     private let captureBar = NSView()
@@ -60,7 +64,13 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private let foldAllButton = NSButton()
     private let overflowButton = NSButton()
     private let gearButton = NSButton()
+    /// Hairline rule above the bottom bar. Stored (not a buildLayout
+    /// local) so refreshChromeSurfaces can re-bake its color.
+    private let bottomRule = NSView()
     private let railView = NSView()
+    /// The Wide rail's right-edge hairline. Stored (not a buildLayout
+    /// local) so refreshChromeSurfaces can re-bake its color.
+    private let railBorder = NSView()
     private let railStack = NSStackView()
     private var columnLeadingConstraint: NSLayoutConstraint!
     private let dropOverlay = NSView()
@@ -107,6 +117,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         // Square panel corners (audit 1.17): the package draws none.
         root.layer?.cornerRadius = 0
         root.layer?.backgroundColor = SNTheme.panelBackground.cgColor
+        root.onAppearanceChange = { [weak self] in self?.refreshChromeSurfaces() }
         root.onDragEntered = { [weak self] in self?.panelDragEntered() ?? [] }
         root.onDragExited = { [weak self] in self?.dropOverlay.isHidden = true }
         root.onDragPerformed = { [weak self] info in self?.panelDragPerformed(info) ?? false }
@@ -120,6 +131,31 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         reload()
     }
 
+    /// Re-bakes the controller-owned layer surfaces from the CURRENT
+    /// theme colors. A layer's background/border color is a CGColor:
+    /// it bakes whichever variant of a dynamic SNTheme color was
+    /// current at assignment time and never re-resolves, while text
+    /// colors (stored as NSColor on the fields) flip live with the
+    /// appearance. Without this, a system appearance flip on the
+    /// long-lived panel leaves dark-appearance text sitting on
+    /// light-baked surfaces (the folder-home bug in the Nov 27
+    /// screenshot). Called from the root view's
+    /// viewDidChangeEffectiveAppearance; every surface is
+    /// optional-chained, so firing before buildLayout has given a
+    /// view its layer is a no-op.
+    private func refreshChromeSurfaces() {
+        view.layer?.backgroundColor = SNTheme.panelBackground.cgColor
+        pillView.layer?.backgroundColor = SNTheme.headerPillBackground.cgColor
+        pillView.layer?.borderColor = SNTheme.headerPillBorder.cgColor
+        for button in pillButtons {
+            button.layer?.backgroundColor = SNTheme.pillButtonBackground.cgColor
+        }
+        railBorder.layer?.backgroundColor = SNTheme.hairline.cgColor
+        bottomRule.layer?.backgroundColor = SNTheme.panelBottomBorder.cgColor
+        panelEdgeBorder.layer?.backgroundColor = SNTheme.panelEdgeBorder.cgColor
+        dropOverlay.layer?.backgroundColor = SNTheme.dropTargetBackground.cgColor
+    }
+
     // MARK: Layout
 
     /// Circular icon-button treatment inside the header pill.
@@ -131,6 +167,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         button.layer?.backgroundColor = SNTheme.pillButtonBackground.cgColor
         button.contentTintColor = SNTheme.primaryText
         button.translatesAutoresizingMaskIntoConstraints = false
+        pillButtons.append(button)
     }
 
     /// Small square bottom-bar button (24×24, radius 6 — the package's
@@ -158,7 +195,6 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         railView.translatesAutoresizingMaskIntoConstraints = false
         railView.isHidden = true
         view.addSubview(railView)
-        let railBorder = NSView()
         railBorder.wantsLayer = true
         railBorder.layer?.backgroundColor = SNTheme.hairline.cgColor
         railBorder.translatesAutoresizingMaskIntoConstraints = false
@@ -333,7 +369,6 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         // Hairline rule above the bottom bar, per the design package
         // (rubric §1.13: the bottom rule is a step stronger than the
         // card-footer hairline in light mode).
-        let bottomRule = NSView()
         bottomRule.wantsLayer = true
         bottomRule.layer?.backgroundColor = SNTheme.panelBottomBorder.cgColor
         bottomRule.translatesAutoresizingMaskIntoConstraints = false
@@ -1584,6 +1619,15 @@ final class PanelRootView: NSVisualEffectView {
     var onDragEntered: (() -> NSDragOperation)?
     var onDragExited: (() -> Void)?
     var onDragPerformed: ((NSDraggingInfo) -> Bool)?
+    /// Fired when the panel's effective appearance flips (e.g. the
+    /// system switches light/dark on a schedule): the controller
+    /// re-bakes its layer-backed theme surfaces in response.
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1636,6 +1680,9 @@ private final class FlippedView: NSView {
 private final class CompactRowView: NSView {
     var onSelect: (() -> Void)?
     var onOpen: (() -> Void)?
+    /// The last selection state applied, so an appearance change can
+    /// re-apply the same state's styling (its colors are dynamic).
+    private var isSelected = false
 
     init(note: SNNote, selected: Bool) {
         super.init(frame: .zero)
@@ -1689,6 +1736,7 @@ private final class CompactRowView: NSView {
     /// init (v0.5.1) so selection changes can restyle a live row in
     /// place instead of rebuilding the row list.
     func setSelected(_ selected: Bool) {
+        isSelected = selected
         if selected {
             layer?.backgroundColor = SNTheme.cardBackground.cgColor
             layer?.borderWidth = 1.5
@@ -1698,6 +1746,14 @@ private final class CompactRowView: NSView {
             layer?.borderWidth = 0
             layer?.borderColor = nil
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // The state styling bakes CGColors from dynamic theme
+        // colors; re-apply the current state's styling so it
+        // resolves under the new appearance.
+        setSelected(isSelected)
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -1726,14 +1782,14 @@ private final class CompactRowView: NSView {
 /// tertiary count; the selected row takes the accent wash + bold.
 private final class RailRowView: NSView {
     var onOpen: (() -> Void)?
+    private let isSelected: Bool
 
     init(symbol: String, title: String, count: Int?, selected: Bool) {
+        isSelected = selected
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 7
-        if selected {
-            layer?.backgroundColor = SNTheme.accent.withAlphaComponent(0.16).cgColor
-        }
+        refreshSurfaces()
 
         let glyph = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
         glyph.contentTintColor = selected ? SNTheme.accent : SNTheme.secondaryText
@@ -1778,6 +1834,20 @@ private final class RailRowView: NSView {
         super.init(coder: coder)
     }
 
+    /// The selected row's accent wash is a dynamic theme color baked
+    /// into the layer; re-bake it when the appearance flips, like the
+    /// other row classes (v0.7.1).
+    private func refreshSurfaces() {
+        if isSelected {
+            layer?.backgroundColor = SNTheme.accent.withAlphaComponent(0.16).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshSurfaces()
+    }
+
     @objc private func rowClicked() { onOpen?() }
 }
 
@@ -1788,6 +1858,10 @@ private final class FolderRowView: NSView {
     var onRename: (() -> Void)?
     var onDelete: (() -> Void)?
 
+    /// The icon tile. Stored so refreshSurfaces can re-bake its
+    /// layer color on an appearance change.
+    private let tile = NSView()
+
     init(folder: SNFolder, count: Int) {
         super.init(frame: .zero)
         wantsLayer = true
@@ -1795,7 +1869,6 @@ private final class FolderRowView: NSView {
         // row lifts on a single soft shadow, 0 1 3 rgba(20,22,30,0.06)
         // (rubric §1.12; CSS blur halved into shadowRadius as usual).
         layer?.cornerRadius = 10
-        layer?.backgroundColor = SNTheme.cardBackground.cgColor
         layer?.shadowColor = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1).cgColor
         layer?.shadowOpacity = 0.06
         layer?.shadowRadius = 1.5
@@ -1803,10 +1876,9 @@ private final class FolderRowView: NSView {
 
         // Plain rows, no folder colours (design package): an accent-soft
         // tile with a folder glyph carries the row instead.
-        let tile = NSView()
         tile.wantsLayer = true
         tile.layer?.cornerRadius = 8
-        tile.layer?.backgroundColor = SNTheme.accentSoftBackground.cgColor
+        refreshSurfaces()
         tile.translatesAutoresizingMaskIntoConstraints = false
         let glyph = NSImageView(image: NSImage(systemSymbolName: "folder", accessibilityDescription: nil) ?? NSImage())
         glyph.contentTintColor = SNTheme.accent
@@ -1880,6 +1952,21 @@ private final class FolderRowView: NSView {
         super.init(coder: coder)
     }
 
+    /// (Re)applies the layer-baked theme surfaces. A CGColor bakes
+    /// the dynamic color's then-current variant, so this runs at
+    /// build time and again on every appearance change — otherwise
+    /// a row built in light mode keeps its white card surface under
+    /// dark mode's near-white name text.
+    private func refreshSurfaces() {
+        layer?.backgroundColor = SNTheme.cardBackground.cgColor
+        tile.layer?.backgroundColor = SNTheme.accentSoftBackground.cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshSurfaces()
+    }
+
     @objc private func rowClicked() { onOpen?() }
     @objc private func menuPin() { onPin?() }
     @objc private func menuRename() { onRename?() }
@@ -1892,11 +1979,14 @@ private final class FolderRowView: NSView {
 private final class UtilityRowView: NSView {
     var onOpen: (() -> Void)?
 
+    /// The icon tile. Stored so refreshSurfaces can re-bake its
+    /// layer color on an appearance change.
+    private let tile = NSView()
+
     init(symbol: String, title: String, detail: String?) {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 10
-        layer?.backgroundColor = SNTheme.cardBackground.cgColor
         // Same no-border + soft-shadow treatment as FolderRowView
         // (rubric §1.12).
         layer?.shadowColor = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1).cgColor
@@ -1904,10 +1994,9 @@ private final class UtilityRowView: NSView {
         layer?.shadowRadius = 1.5
         layer?.shadowOffset = NSSize(width: 0, height: -1)
 
-        let tile = NSView()
         tile.wantsLayer = true
         tile.layer?.cornerRadius = 8
-        tile.layer?.backgroundColor = SNTheme.accentSoftBackground.cgColor
+        refreshSurfaces()
         tile.translatesAutoresizingMaskIntoConstraints = false
         let glyph = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
         glyph.contentTintColor = SNTheme.accent
@@ -1955,6 +2044,19 @@ private final class UtilityRowView: NSView {
     required init?(coder: NSCoder) {
         // Rows are only ever built in code; this exists to satisfy NSCoding.
         super.init(coder: coder)
+    }
+
+    /// (Re)applies the layer-baked theme surfaces — see
+    /// FolderRowView.refreshSurfaces for why this must run again on
+    /// every appearance change, not just at build time.
+    private func refreshSurfaces() {
+        layer?.backgroundColor = SNTheme.cardBackground.cgColor
+        tile.layer?.backgroundColor = SNTheme.accentSoftBackground.cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshSurfaces()
     }
 
     @objc private func rowClicked() { onOpen?() }
