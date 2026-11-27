@@ -7,7 +7,7 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 ## Prep (before you hit record)
 
-1. SilverNotes **v0.6.2** installed (Settings → Check for Updates).
+1. SilverNotes **v0.7.0** installed (Settings → Check for Updates).
 2. Settings → Appearance: density **Standard**, width **Standard**.
    Panel side: right. macOS appearance: **Light**.
 3. Have a Finder window open behind the panel with **one image file**

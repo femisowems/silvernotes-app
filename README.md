@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.6.2-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.7.0-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,8 +24,12 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.6.2**: the
-> everything-expanded default, corrected — every note in a
+> 🚧 **Work in progress** — SilverNotes is at **v0.7.0**: note
+> types at creation (Text, Checklist, Code, Plain Text, and File
+> notes from the + menu), a Duplicate action in every note's gear
+> menu, and card-height hardening so long notes are never
+> clipped — on top of v0.6.2, the everything-expanded default,
+> corrected — every note in a
 > list renders as its full card at once, in every density
 > (v0.6.1's Compact accordion, top note only, was superseded
 > the same day), on top of v0.6.0, the
@@ -49,7 +53,7 @@ nothing ever leaves the machine.
 > which are tracked in [ROADMAP.md](ROADMAP.md).
 > v0.5.0 was installed and used on a real Mac on November 26, 2026,
 > via the app's own Check for Updates — the self-update path
-> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1 and v0.6.2 are CI-built;
+> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1, v0.6.2 and v0.7.0 are CI-built;
 > their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
@@ -406,6 +410,15 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.7.0 (November 27, 2026) — note types, Duplicate, and
+  scroll hardening, CI-built, on-device confirmation pending.**
+  The + button now offers the mockup's note kinds — Text,
+  Checklist (seeded with three empty tasks), Code, Plain Text,
+  and File Note… from a picker; every note's gear menu gains
+  Duplicate, which copies the note (attachments included) to
+  directly below the original; and cards re-measure their text
+  height whenever their width changes, so long notes are never
+  clipped inside the scrolling list. Suite now 26 tests.
 - **v0.6.2 (November 27, 2026) — the everything-expanded default,
   corrected, CI-built, on-device confirmation pending.** Every
   note in a list now renders as its full card at once, in every
