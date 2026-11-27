@@ -837,6 +837,14 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     private func updateCompactRows(notes: [SNNote]) {
         clearStack()
         if compactSelectedID == nil { compactSelectedID = notes.first?.id }
+        // Everything-expanded default (Nov 27, 2026): a Compact list
+        // never opens with every note collapsed — if the expanded note
+        // isn't in this list, the selected (top) note takes its place.
+        // Compact stays an accordion (one card at a time); which note
+        // is expanded remains the user's choice within the session.
+        if !notes.contains(where: { $0.id == compactExpandedID }) {
+            compactExpandedID = compactSelectedID
+        }
         for note in notes {
             if note.id == compactExpandedID {
                 let cardView = card(for: note, trash: false)
