@@ -143,6 +143,21 @@ final class PopulationTests: XCTestCase {
         assertBottomBar("3 notes")
     }
 
+    func testDuplicateNoteAddsOneCard() throws {
+        controller.openFolder(folderA.id)
+        var stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 3)
+        let original = try XCTUnwrap(store.notes(in: folderA.id).first)
+        store.duplicateNote(id: original.id)
+        // duplicateNote fires onStructuralChange, which viewDidLoad
+        // wired to the controller's reload().
+        stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.count, 4)
+        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 4,
+                       "duplicating a note in the open folder adds exactly one card")
+        assertBottomBar("4 notes")
+    }
+
     func testTrashPopulatesTrashedNotes() throws {
         controller.openTrash()
         let stack = try XCTUnwrap(findCardStack())

@@ -1095,24 +1095,43 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
     }
 
+    /// The folder a newly created note lands in: the open folder, or
+    /// — from any other presentation — the first folder, which then
+    /// becomes the presentation so the new note is on screen.
+    private func creationFolderID() -> UUID? {
+        switch presentation {
+        case .notes(let id): return id
+        case .folders, .trash, .search, .allNotes, .pinnedNotes:
+            guard let first = store.folders.first else { return nil }
+            presentation = .notes(folderID: first.id)
+            return first.id
+        }
+    }
+
     /// Creates a note in the current folder (or the first folder) and focuses it.
     func createNoteAndFocus() {
-        let folderID: UUID
-        switch presentation {
-        case .notes(let id): folderID = id
-        case .folders, .trash, .search, .allNotes, .pinnedNotes:
-            guard let first = store.folders.first else { return }
-            folderID = first.id
-            presentation = .notes(folderID: folderID)
-        }
-        let note = store.createNote(in: folderID)
+        createNoteAndFocus(kind: .text)
+    }
+
+    /// Creates a note of the given kind (the + menu's presets) in the
+    /// current folder and focuses it. A checklist note's cursor lands
+    /// after the first line's "- [ ] " prefix (character 6), ready to
+    /// type the first task; every other kind focuses at the end of
+    /// its (empty) seed, as a plain text note always has.
+    func createNoteAndFocus(kind: NoteKind) {
+        guard let folderID = creationFolderID() else { return }
+        let note = store.createNote(in: folderID, body: kind.seedBody, mode: kind.mode)
         reload()
         scrollToTop()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             for sub in self.stackView.arrangedSubviews {
                 if let cardView = self.cardView(in: sub), cardView.noteID == note.id {
-                    cardView.focusEditor()
+                    if kind == .checklist {
+                        cardView.focusEditor(cursorAt: 6)
+                    } else {
+                        cardView.focusEditor()
+                    }
                     self.activeCard = cardView
                     return
                 }
@@ -1129,7 +1148,55 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         case .trash:
             confirmEmptyTrash()
         case .notes, .search, .allNotes, .pinnedNotes:
-            createNoteAndFocus()
+            showNewNoteMenu()
+        }
+    }
+
+    /// The + button in a note view offers the note kinds — the
+    /// distinct note types the design shows (text, checklist, code,
+    /// plain text) — plus a file picker, instead of creating a blank
+    /// text note immediately. ⌘N and the empty state's button keep
+    /// the instant text-note path (createNoteAndFocus()).
+    private func showNewNoteMenu() {
+        let menu = NSMenu()
+        menu.delegate = self
+        for (index, kind) in NoteKind.allCases.enumerated() {
+            let item = NSMenuItem(title: kind.displayName, action: #selector(newNoteKindPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let fileItem = NSMenuItem(title: "File Note…", action: #selector(newFileNotePicked), keyEquivalent: "")
+        fileItem.target = self
+        menu.addItem(fileItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: newButton.bounds.height + 4), in: newButton)
+    }
+
+    @objc private func newNoteKindPicked(_ sender: NSMenuItem) {
+        guard NoteKind.allCases.indices.contains(sender.tag) else { return }
+        createNoteAndFocus(kind: NoteKind.allCases[sender.tag])
+    }
+
+    /// "File Note…": one new note carrying every picked file as an
+    /// attachment — images embedded, other files linked, exactly as
+    /// if they had been dropped onto the panel.
+    @objc private func newFileNotePicked() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        PanelController.shared.beginChildInteraction()
+        panel.begin { [weak self] result in
+            PanelController.shared.endChildInteraction()
+            guard let self = self, result == .OK, !panel.urls.isEmpty else { return }
+            guard let folderID = self.creationFolderID() else { return }
+            let note = self.store.createNote(in: folderID)
+            for url in panel.urls {
+                self.store.addAttachment(noteID: note.id, from: url, origin: nil)
+            }
+            self.reload()
+            self.scrollToTop()
         }
     }
 
