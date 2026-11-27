@@ -76,9 +76,8 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     /// The notes backing the current list presentation, in display
     /// order — fold-all, reorder, and export all act on exactly these.
     private var currentListNotes: [SNNote] = []
-    /// Compact density selection / expansion (audit 7.1).
+    /// Compact density selection (audit 7.1).
     private var compactSelectedID: UUID?
-    private var compactExpandedID: UUID?
     /// Insertion index computed during a reorder drag over the stack.
     private var pendingInsertIndex: Int?
 
@@ -829,24 +828,20 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
 
     // MARK: Compact rows (audit 7.1)
 
-    /// Compact density: one-line rows (pin state, first line, timestamp)
-    /// instead of cards; the selected row expands into its full card.
-    /// Rows are rebuilt per reload — Compact is a triage surface, and
-    /// body edits never trigger structural reloads, so an expanded
-    /// card's editor is not disturbed while typing.
+    /// Compact density: every note renders as its full card by default
+    /// (the everything-expanded default, corrected Nov 27, 2026 —
+    /// v0.6.1's one-card accordion reading was wrong). A note renders
+    /// as a one-line row only while folded; folding is a manual,
+    /// per-note, session-only action (the store resets folds on
+    /// load), and double-click or ⏎ on a row unfolds it. Rows are
+    /// rebuilt per reload — Compact is a triage surface, and body
+    /// edits never trigger structural reloads, so an expanded card's
+    /// editor is not disturbed while typing.
     private func updateCompactRows(notes: [SNNote]) {
         clearStack()
         if compactSelectedID == nil { compactSelectedID = notes.first?.id }
-        // Everything-expanded default (Nov 27, 2026): a Compact list
-        // never opens with every note collapsed — if the expanded note
-        // isn't in this list, the selected (top) note takes its place.
-        // Compact stays an accordion (one card at a time); which note
-        // is expanded remains the user's choice within the session.
-        if !notes.contains(where: { $0.id == compactExpandedID }) {
-            compactExpandedID = compactSelectedID
-        }
         for note in notes {
-            if note.id == compactExpandedID {
+            if !note.isFolded {
                 let cardView = card(for: note, trash: false)
                 stackView.addArrangedSubview(cardView)
                 pinWidth(cardView)
@@ -859,8 +854,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                 }
                 row.onOpen = { [weak self] in
                     self?.compactSelectedID = note.id
-                    self?.compactExpandedID = note.id
-                    self?.reload()
+                    self?.store.setNoteFolded(id: note.id, folded: false)
                 }
                 row.translatesAutoresizingMaskIntoConstraints = false
                 stackView.addArrangedSubview(row)
@@ -1466,9 +1460,8 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                 moveCompactSelection(by: 1)
                 return true
             case 36: // ⏎
-                if let id = compactSelectedID {
-                    compactExpandedID = compactExpandedID == id ? nil : id
-                    reload()
+                if let id = compactSelectedID, let note = store.note(id: id) {
+                    store.setNoteFolded(id: id, folded: !note.isFolded)
                 }
                 return true
             default:
