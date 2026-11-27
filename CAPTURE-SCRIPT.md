@@ -7,7 +7,7 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 ## Prep (before you hit record)
 
-1. SilverNotes **v0.6.1** installed (Settings → Check for Updates).
+1. SilverNotes **v0.6.2** installed (Settings → Check for Updates).
 2. Settings → Appearance: density **Standard**, width **Standard**.
    Panel side: right. macOS appearance: **Light**.
 3. Have a Finder window open behind the panel with **one image file**
@@ -36,9 +36,9 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 14. **Settings** — open via the bottom-bar gear: General pane, pause;
     Appearance pane, pause; close Settings.
 15. **Compact + expand** — Settings → Appearance → density Compact;
-    All Notes; the list should open with the **top note already
-    expanded** into its card — pause on that. *(v0.6.1's
-    everything-expanded default.)* Then **double-click the "Welcome
+    All Notes; the list should open with **every note already
+    expanded** into its full card — pause on that. *(The
+    everything-expanded default, corrected in v0.6.2.)* Then **double-click the "Welcome
     to SilverNotes" row** so it expands into its card, pause.
     *(v0.5.1 check 38.)* Then set density back to Standard.
 16. **Keyboard** — close the panel, reopen with ⌃⌥⌘Space, and press
@@ -56,5 +56,5 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 Rubric states A1–A9, A11–A15 (A10 first-run welcome is prose-only in
 the mockup and can't be captured without a fresh store), v0.5.1
-confirmation checks 36–38, and v0.6.1's Compact expanded default
-(beat 15). Grading: VISUAL-AUDIT-RUBRIC.md (109 rows).
+confirmation checks 36–38, and the all-expanded default in every
+density (beat 15). Grading: VISUAL-AUDIT-RUBRIC.md (109 rows).

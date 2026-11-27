@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.6.1-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.6.2-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,10 +24,11 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.6.1**: the
-> everything-expanded default reaches Compact (a Compact list
-> opens with the top note expanded instead of every note
-> collapsed to a row), on top of v0.6.0, the
+> 🚧 **Work in progress** — SilverNotes is at **v0.6.2**: the
+> everything-expanded default, corrected — every note in a
+> list renders as its full card at once, in every density
+> (v0.6.1's Compact accordion, top note only, was superseded
+> the same day), on top of v0.6.0, the
 > Variation A visual pass (header pill, cards, folder rows, bottom
 > bar, gear menu, formatting toolbar and Settings aligned to the
 > final mockup's exact values; the search field no longer clips
@@ -48,7 +49,7 @@ nothing ever leaves the machine.
 > which are tracked in [ROADMAP.md](ROADMAP.md).
 > v0.5.0 was installed and used on a real Mac on November 26, 2026,
 > via the app's own Check for Updates — the self-update path
-> confirmed working end to end. v0.5.1, v0.6.0 and v0.6.1 are CI-built;
+> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1 and v0.6.2 are CI-built;
 > their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
@@ -405,6 +406,15 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.6.2 (November 27, 2026) — the everything-expanded default,
+  corrected, CI-built, on-device confirmation pending.** Every
+  note in a list now renders as its full card at once, in every
+  density; v0.6.1 had read the rule for Compact as an accordion
+  (top note expanded, the rest collapsed rows), which Femi
+  flagged live the same day. Folding remains a manual, per-note,
+  session-only action. Suite now 21 tests, including one pinning
+  that every note renders expanded on open, even after switching
+  views.
 - **v0.6.1 (November 27, 2026) — the everything-expanded default
   reaches Compact, CI-built, on-device confirmation pending.** A
   Compact list now opens with the top note expanded into its full
