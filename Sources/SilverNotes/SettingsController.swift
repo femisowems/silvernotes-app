@@ -236,7 +236,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         updateStatusLabel.frame = NSRect(x: 190, y: 105, width: 180, height: 18)
         pane.addSubview(updateStatusLabel)
 
-        let version = NSTextField(labelWithString: "SilverNotes v0.6.0")
+        let version = NSTextField(labelWithString: "SilverNotes v0.6.1")
         version.font = NSFont.systemFont(ofSize: 11)
         version.textColor = SNTheme.secondaryText
         version.frame = NSRect(x: 14, y: 16, width: 336, height: 16)

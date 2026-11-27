@@ -168,7 +168,21 @@ final class PopulationTests: XCTestCase {
         controller.openAllNotes()
         let stack = try XCTUnwrap(findCardStack())
         XCTAssertEqual(stack.arrangedSubviews.count, 4,
-                       "Compact All Notes must hold one row per live note")
+                       "Compact All Notes must hold one entry per live note")
         assertBottomBar("4 notes")
+    }
+
+    func testCompactDefaultsToFirstNoteExpanded() throws {
+        Preferences.density = .compact
+        controller.openAllNotes()
+        let stack = try XCTUnwrap(findCardStack())
+        XCTAssertEqual(stack.arrangedSubviews.count, 4,
+                       "Compact All Notes must hold one entry per live note")
+        XCTAssertEqual(stack.arrangedSubviews.filter { $0 is NoteCardView }.count, 1,
+                       "the top note opens expanded into its full card")
+        // CompactRowView is private to PanelContentController.swift,
+        // so the rows are counted as the non-card remainder.
+        XCTAssertEqual(stack.arrangedSubviews.filter { !($0 is NoteCardView) }.count, 3,
+                       "the remaining notes stay as one-line rows")
     }
 }
