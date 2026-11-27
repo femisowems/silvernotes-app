@@ -470,6 +470,23 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     // MARK: Text sizing
 
+    /// The card's text area has no scroller of its own — the outer
+    /// list scrolls whole cards — so the card's height must always
+    /// equal the text's full laid-out height. That height depends on
+    /// the width the text was laid out at: when the card's width
+    /// changes (panel resize, density or width switch) the text
+    /// re-wraps, and a height measured at the old width would clip
+    /// lines with no way to scroll to them. Re-measure on every real
+    /// width change. Folded cards skip it: their text is hidden and
+    /// configure() re-measures when they unfold.
+    override func setFrameSize(_ newSize: NSSize) {
+        let oldWidth = frame.width
+        super.setFrameSize(newSize)
+        guard newSize.width > 0, newSize.width != oldWidth,
+              lastConfiguredNote?.isFolded == false else { return }
+        updateTextHeight()
+    }
+
     private func updateTextHeight() {
         guard let layoutManager = textView.layoutManager, let container = textView.textContainer else { return }
         layoutManager.ensureLayout(for: container)
@@ -509,9 +526,16 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         }
     }
 
-    func focusEditor() {
+    /// Focuses the editor, placing the cursor at the end of the text —
+    /// or at `cursorAt` (a character offset, clamped to the text) when
+    /// the caller knows a better spot: a fresh checklist note wants
+    /// the cursor right after the first line's "- [ ] " prefix, ready
+    /// to type the first task.
+    func focusEditor(cursorAt: Int? = nil) {
         window?.makeFirstResponder(textView)
-        textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
+        let length = (textView.string as NSString).length
+        let location = cursorAt.map { min(max($0, 0), length) } ?? length
+        textView.setSelectedRange(NSRange(location: location, length: 0))
     }
 
     // MARK: Footer actions
@@ -590,6 +614,13 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
                       actions: GearMenu.Actions(
                         onPin: { [weak self] in self?.togglePin() },
                         onFold: { [weak self] in self?.toggleFold() },
+                        onDuplicate: isTrashMode ? nil : { [weak self] in
+                            guard let self = self else { return }
+                            // The store change fires onStructuralChange;
+                            // the controller's reload shows the copy
+                            // below the original.
+                            self.store.duplicateNote(id: self.noteID)
+                        },
                         onColor: { [weak self] token in
                             guard let self = self else { return }
                             self.store.setNoteColor(id: self.noteID, color: token)

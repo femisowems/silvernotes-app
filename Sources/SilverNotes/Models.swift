@@ -17,6 +17,49 @@ enum NoteMode: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Note kind (what the + button's menu offers at creation time)
+//
+// A kind is a creation preset only: it seeds the new note's body and
+// picks its rendering mode. After creation the note is an ordinary
+// SNNote — its mode can be switched in the gear menu like any other,
+// and nothing about the kind is stored.
+
+enum NoteKind: CaseIterable {
+    case text
+    case checklist
+    case code
+    case plainText
+
+    var displayName: String {
+        switch self {
+        case .text: return "Text Note"
+        case .checklist: return "Checklist Note"
+        case .code: return "Code Note"
+        case .plainText: return "Plain Text Note"
+        }
+    }
+
+    /// The rendering mode a note of this kind starts in.
+    var mode: NoteMode {
+        switch self {
+        case .text, .checklist: return .standard
+        case .code: return .code
+        case .plainText: return .plain
+        }
+    }
+
+    /// The body a note of this kind starts with. The checklist seed is
+    /// three empty tasks; the trailing space after the last "- [ ]"
+    /// matches the first two lines so the seed parses as three tasks
+    /// and the editor opens ready to type the first one.
+    var seedBody: String {
+        switch self {
+        case .checklist: return "- [ ] \n- [ ] \n- [ ] "
+        case .text, .code, .plainText: return ""
+        }
+    }
+}
+
 // MARK: - Note colour tokens (named tokens, not raw hex, so themes can remap)
 
 enum NoteColorToken: String, Codable, CaseIterable {

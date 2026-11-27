@@ -170,6 +170,115 @@ final class NoteStoreTests: XCTestCase {
                        "the load-time reset must be written back to disk")
     }
 
+    // MARK: Duplicate
+
+    func testDuplicateNoteCopiesFieldsAndLandsBelowOriginal() throws {
+        let a = store.createFolder(name: "A")
+        let bottom = store.createNote(in: a.id, body: "bottom")
+        let middle = store.createNote(in: a.id, body: "middle")
+        let top = store.createNote(in: a.id, body: "top")
+        store.setNoteColor(id: middle.id, color: .blue)
+        store.setNoteMode(id: middle.id, mode: .code)
+        store.toggleNotePin(id: middle.id)
+        store.setNoteFolded(id: middle.id, folded: true)
+
+        let copy = try XCTUnwrap(store.duplicateNote(id: middle.id))
+
+        XCTAssertNotEqual(copy.id, middle.id)
+        XCTAssertEqual(copy.folderID, a.id)
+        XCTAssertEqual(copy.body, "middle")
+        XCTAssertEqual(copy.mode, .code)
+        XCTAssertEqual(copy.color, .blue)
+        XCTAssertTrue(copy.isPinned, "the copy keeps the original's pin")
+        XCTAssertFalse(copy.isFolded, "a duplicate always starts expanded")
+        XCTAssertNil(copy.deletedAt)
+
+        // Directly below the original: the copy's sortIndex sits
+        // strictly between the original's and the next note down's,
+        // and the folder's live order by sortIndex reflects that.
+        XCTAssertGreaterThan(copy.sortIndex, middle.sortIndex)
+        XCTAssertLessThan(copy.sortIndex, bottom.sortIndex)
+        let byOrder = store.notes(in: a.id).sorted { $0.sortIndex < $1.sortIndex }.map(\.id)
+        XCTAssertEqual(byOrder, [top.id, middle.id, copy.id, bottom.id])
+
+        XCTAssertNil(store.duplicateNote(id: UUID()),
+                     "duplicating an unknown id returns nil")
+    }
+
+    func testDuplicateNoteCopiesEmbeddedImageFile() throws {
+        let a = store.createFolder(name: "A")
+        let note = store.createNote(in: a.id, body: "with attachments")
+
+        // A real 1×1 PNG on disk, attached the way a dropped image
+        // is: embedded — copied into the note's Attachments directory.
+        let png = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="))
+        let imageURL = baseDirectory.appendingPathComponent("photo.png")
+        try png.write(to: imageURL)
+        let embedded = try XCTUnwrap(store.addAttachment(noteID: note.id, from: imageURL))
+        XCTAssertTrue(embedded.isImage)
+        XCTAssertFalse(embedded.isLinked)
+
+        // A non-image file is LINKED instead: the record points at
+        // the original, which stays where it lives.
+        let textURL = baseDirectory.appendingPathComponent("notes.txt")
+        try "hello".write(to: textURL, atomically: true, encoding: .utf8)
+        let linked = try XCTUnwrap(store.addAttachment(noteID: note.id, from: textURL))
+        XCTAssertTrue(linked.isLinked)
+
+        let copy = try XCTUnwrap(store.duplicateNote(id: note.id))
+        XCTAssertEqual(copy.attachments.count, 2)
+
+        let copiedImage = try XCTUnwrap(copy.attachments.first { $0.isImage })
+        XCTAssertNotEqual(copiedImage.id, embedded.id)
+        XCTAssertTrue(copiedImage.relativePath.hasPrefix("\(copy.id.uuidString)/"),
+                      "the copy's embedded file must live under the copy's own directory")
+        XCTAssertTrue(store.attachmentFileExists(copiedImage),
+                      "the duplicated image file must actually be copied")
+        XCTAssertNotEqual(store.attachmentURL(copiedImage), store.attachmentURL(embedded),
+                          "original and copy must not share one file")
+
+        let copiedLink = try XCTUnwrap(copy.attachments.first { $0.isLinked })
+        XCTAssertNotEqual(copiedLink.id, linked.id)
+        XCTAssertEqual(copiedLink.linkedPath, linked.linkedPath,
+                       "a linked attachment is copied as a record, unchanged")
+        XCTAssertEqual(copiedLink.relativePath, "")
+    }
+
+    // MARK: Note kinds / creation mode
+
+    func testCreateNoteWithModePersists() {
+        store.load()
+        let a = store.createFolder(name: "A")
+        let note = store.createNote(in: a.id, body: "let x = 1", mode: .code)
+        XCTAssertEqual(store.note(id: note.id)?.mode, .code)
+
+        let reloaded = NoteStore(baseDirectory: baseDirectory)
+        reloaded.load()
+        XCTAssertEqual(reloaded.note(id: note.id)?.mode, .code,
+                       "a note created in Code mode must reload in Code mode")
+    }
+
+    func testNoteKindMappingsAndChecklistSeed() {
+        XCTAssertEqual(NoteKind.allCases.count, 4)
+        XCTAssertEqual(NoteKind.text.displayName, "Text Note")
+        XCTAssertEqual(NoteKind.checklist.displayName, "Checklist Note")
+        XCTAssertEqual(NoteKind.code.displayName, "Code Note")
+        XCTAssertEqual(NoteKind.plainText.displayName, "Plain Text Note")
+        XCTAssertEqual(NoteKind.text.mode, .standard)
+        XCTAssertEqual(NoteKind.checklist.mode, .standard)
+        XCTAssertEqual(NoteKind.code.mode, .code)
+        XCTAssertEqual(NoteKind.plainText.mode, .plain)
+
+        let a = store.createFolder(name: "A")
+        let note = store.createNote(in: a.id,
+                                    body: NoteKind.checklist.seedBody,
+                                    mode: NoteKind.checklist.mode)
+        XCTAssertEqual(note.taskProgress.total, 3,
+                       "the checklist seed must parse as three tasks")
+        XCTAssertEqual(note.taskProgress.done, 0)
+    }
+
     // MARK: Persistence
 
     func testPersistenceRoundTrip() {

@@ -243,11 +243,14 @@ final class NoteStore {
 
     // MARK: Note mutations
 
-    /// New notes land at the TOP of their folder.
+    /// New notes land at the TOP of their folder. `mode` is the
+    /// rendering mode the note starts in (the note-kind presets in
+    /// the + menu pass .code / .plain; every other caller keeps the
+    /// .standard default).
     @discardableResult
-    func createNote(in folderID: UUID, body: String = "") -> SNNote {
+    func createNote(in folderID: UUID, body: String = "", mode: NoteMode = .standard) -> SNNote {
         let topIndex = (data.notes.filter { $0.folderID == folderID }.map(\.sortIndex).min() ?? 1) - 1
-        let note = SNNote(folderID: folderID, body: body, sortIndex: topIndex)
+        let note = SNNote(folderID: folderID, body: body, mode: mode, sortIndex: topIndex)
         data.notes.append(note)
         // Every creation path funnels through here (new-note button,
         // capture field, drop-to-create), so this is the one place the
@@ -256,6 +259,80 @@ final class NoteStore {
         data.userCreatedNote = true
         save(); onStructuralChange?()
         return note
+    }
+
+    /// A full copy of a note, placed directly BELOW the original in
+    /// the same folder's live ordering: the copy's sortIndex is the
+    /// midpoint between the original's and the next note down (or
+    /// original + 1 when the original is last). Content fields carry
+    /// over (body, mode, colour, pin); identity does not — new id,
+    /// fresh timestamps, never folded, never trashed. Attachments get
+    /// new ids too: linked attachments are copied as records (the
+    /// file stays where it lives), while embedded files are copied
+    /// into the new note's own Attachments directory and get a fresh
+    /// thumbnail — a duplicate must survive the original's deletion.
+    /// An embedded file that cannot be copied is skipped rather than
+    /// failing the whole duplicate.
+    @discardableResult
+    func duplicateNote(id: UUID) -> SNNote? {
+        guard let original = note(id: id) else { return nil }
+        let now = Date()
+
+        let nextBelow = data.notes
+            .filter { $0.folderID == original.folderID && $0.deletedAt == nil
+                      && $0.id != original.id && $0.sortIndex > original.sortIndex }
+            .map(\.sortIndex)
+            .min()
+        let sortIndex = nextBelow.map { (original.sortIndex + $0) / 2 } ?? original.sortIndex + 1
+
+        let newID = UUID()
+        var attachments: [SNAttachment] = []
+        for attachment in original.attachments {
+            if attachment.isLinked {
+                var record = attachment
+                record.id = UUID()
+                attachments.append(record)
+                continue
+            }
+            // Embedded: copy the file (under its on-disk name, which
+            // can carry a de-clobbering suffix the display name lacks)
+            // into the new note's directory before building the
+            // record, so makeThumbnail can resolve it through the
+            // record's relativePath.
+            let source = attachmentURL(attachment)
+            let noteDir = attachmentsDirectory.appendingPathComponent(newID.uuidString, isDirectory: true)
+            try? FileManager.default.createDirectory(at: noteDir, withIntermediateDirectories: true)
+            let destination = noteDir.appendingPathComponent(source.lastPathComponent)
+            do {
+                try FileManager.default.copyItem(at: source, to: destination)
+            } catch {
+                continue
+            }
+            let copied = SNAttachment(
+                fileName: attachment.fileName,
+                relativePath: "\(newID.uuidString)/\(destination.lastPathComponent)",
+                isImage: attachment.isImage,
+                origin: attachment.origin
+            )
+            makeThumbnail(for: copied)
+            attachments.append(copied)
+        }
+
+        let copy = SNNote(id: newID,
+                          folderID: original.folderID,
+                          body: original.body,
+                          mode: original.mode,
+                          color: original.color,
+                          isPinned: original.isPinned,
+                          isFolded: false,
+                          sortIndex: sortIndex,
+                          createdAt: now,
+                          updatedAt: now,
+                          deletedAt: nil,
+                          attachments: attachments)
+        data.notes.append(copy)
+        save(); onStructuralChange?()
+        return copy
     }
 
     /// Body edits from typing: persist (debounced) without a structural
