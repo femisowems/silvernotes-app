@@ -68,17 +68,15 @@ final class SettingsController: NSObject, NSWindowDelegate {
     // MARK: Window construction
 
     private func buildWindow() {
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 430))
-        content.wantsLayer = true
-        content.layer?.backgroundColor = SNTheme.settingsWindowBackground.cgColor
+        let content = ThemedBackgroundView(frame: NSRect(x: 0, y: 0, width: 620, height: 430))
+        content.surfaceColor = SNTheme.settingsWindowBackground
 
         // Sidebar: five rows, the selected one on the accent (the
         // package's .srow.sel). Width is the package's 38% of the
         // window (rubric §1.16); its surface and right border are the
         // package's #ECECF1 / #DDDDE3.
-        let sidebar = NSView(frame: NSRect(x: 0, y: 0, width: 236, height: 430))
-        sidebar.wantsLayer = true
-        sidebar.layer?.backgroundColor = SNTheme.settingsSidebarBackground.cgColor
+        let sidebar = ThemedBackgroundView(frame: NSRect(x: 0, y: 0, width: 236, height: 430))
+        sidebar.surfaceColor = SNTheme.settingsSidebarBackground
         content.addSubview(sidebar)
         let paneSpecs: [(String, String)] = [
             ("gearshape", "General"),
@@ -104,9 +102,8 @@ final class SettingsController: NSObject, NSWindowDelegate {
             sidebar.addSubview(button)
             sidebarButtons.append(button)
         }
-        let sidebarBorder = NSView(frame: NSRect(x: 235, y: 0, width: 1, height: 430))
-        sidebarBorder.wantsLayer = true
-        sidebarBorder.layer?.backgroundColor = SNTheme.settingsSidebarBorder.cgColor
+        let sidebarBorder = ThemedBackgroundView(frame: NSRect(x: 235, y: 0, width: 1, height: 430))
+        sidebarBorder.surfaceColor = SNTheme.settingsSidebarBorder
         content.addSubview(sidebarBorder)
 
         // Panes — ALL built before any refresh runs (see header note).
@@ -236,7 +233,7 @@ final class SettingsController: NSObject, NSWindowDelegate {
         updateStatusLabel.frame = NSRect(x: 190, y: 105, width: 180, height: 18)
         pane.addSubview(updateStatusLabel)
 
-        let version = NSTextField(labelWithString: "SilverNotes v0.7.0")
+        let version = NSTextField(labelWithString: "SilverNotes v0.7.1")
         version.font = NSFont.systemFont(ofSize: 11)
         version.textColor = SNTheme.secondaryText
         version.frame = NSRect(x: 14, y: 16, width: 336, height: 16)
@@ -506,5 +503,27 @@ final class SettingsController: NSObject, NSWindowDelegate {
                 self.updateStatusLabel.stringValue = "Restarting to install…"
             }
         }
+    }
+}
+
+/// A plain surface view whose layer background comes from a dynamic
+/// theme color, re-baked when the effective appearance changes. The
+/// Settings window's surfaces had the same stale-after-a-flip class
+/// as the panel's folder rows (v0.7.1): the CGColor was baked once
+/// at window construction and never followed a system flip while
+/// the window sat open.
+private final class ThemedBackgroundView: NSView {
+    var surfaceColor: NSColor? {
+        didSet { bakeSurface() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        bakeSurface()
+    }
+
+    private func bakeSurface() {
+        wantsLayer = true
+        layer?.backgroundColor = surfaceColor?.cgColor
     }
 }
