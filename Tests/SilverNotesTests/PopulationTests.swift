@@ -263,10 +263,9 @@ final class PopulationTests: XCTestCase {
         let lightCardColor = try XCTUnwrap(lightCard)
         // The two variants really are different colors, so the
         // assertions below cannot pass vacuously.
-        XCTAssertFalse(CGColorEqualToColor(darkCardColor, lightCardColor),
-                       "the card surface must differ between light and dark")
-        XCTAssertTrue(CGColorEqualToColor(before, darkCardColor)
-                        || CGColorEqualToColor(before, lightCardColor),
+        XCTAssertNotEqual(darkCardColor, lightCardColor,
+                          "the card surface must differ between light and dark")
+        XCTAssertTrue(before == darkCardColor || before == lightCardColor,
                       "the row surface starts as a theme card color")
 
         // Flip the row to dark. Setting `appearance` should dispatch
@@ -282,10 +281,10 @@ final class PopulationTests: XCTestCase {
         }
 
         let after = try XCTUnwrap(row.layer?.backgroundColor)
-        XCTAssertTrue(CGColorEqualToColor(after, darkCardColor),
-                      "the row surface must re-bake to the dark card color")
-        XCTAssertFalse(CGColorEqualToColor(after, lightCardColor),
-                       "the row surface must not keep the light card color")
+        XCTAssertEqual(after, darkCardColor,
+                       "the row surface must re-bake to the dark card color")
+        XCTAssertNotEqual(after, lightCardColor,
+                          "the row surface must not keep the light card color")
 
         // The icon tile bakes the accent-soft surface the same way.
         // Black-box: it is the first arranged subview of the row's
@@ -293,7 +292,7 @@ final class PopulationTests: XCTestCase {
         let leftStack = try XCTUnwrap(row.subviews.first as? NSStackView)
         let tile = try XCTUnwrap(leftStack.arrangedSubviews.first)
         let tileColor = try XCTUnwrap(tile.layer?.backgroundColor)
-        XCTAssertTrue(CGColorEqualToColor(tileColor, try XCTUnwrap(darkTile)),
-                      "the row tile must re-bake to the dark accent-soft color")
+        XCTAssertEqual(tileColor, try XCTUnwrap(darkTile),
+                       "the row tile must re-bake to the dark accent-soft color")
     }
 }
