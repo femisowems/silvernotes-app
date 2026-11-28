@@ -5,8 +5,9 @@ import AppKit
 /// - Folder home (Standard width): All Notes + Pinned rows, flat folder
 ///   rows (pinned first, counts), a Trash row; Settings is a gear button
 ///   in the bottom bar (audit 4.34).
-/// - Notes / All Notes / Pinned / Search / Trash: a card stack (or, in
+/// - Notes / All Notes / Pinned / Search: a card stack (or, in
 ///   Compact density, one-line rows with a capture field — audit 7.1).
+/// - Trash: full-width rows with Restore / Delete Forever (v0.7.2).
 /// - Wide width adds a folder rail on the left (audit 7.2) that replaces
 ///   the folder-home step.
 /// The bottom bar carries the count plus fold/unfold-all and overflow
@@ -681,7 +682,18 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                 pinWidth(empty)
                 fillViewport(empty)
             } else {
-                updateCardStack(notes: trashed, trash: true)
+                // Full-width rows, not cards (v0.7.2): a trashed note
+                // is identified, dated, restored or deleted forever —
+                // it is never edited in place.
+                clearStack()
+                for note in trashed {
+                    let row = TrashRowView(note: note)
+                    row.onRestore = { [weak self] in self?.store.restoreFromTrash(id: note.id) }
+                    row.onDeleteForever = { [weak self] in self?.confirmDeleteForever(id: note.id) }
+                    row.translatesAutoresizingMaskIntoConstraints = false
+                    stackView.addArrangedSubview(row)
+                    pinWidth(row)
+                }
             }
 
         case .search(let query):
@@ -699,7 +711,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             } else if isCompact {
                 updateCompactRows(notes: displaySorted(results))
             } else {
-                updateCardStack(notes: displaySorted(results), trash: false)
+                updateCardStack(notes: displaySorted(results))
             }
             updateBottomBar(countText: "\(results.count) result\(results.count == 1 ? "" : "s")")
         }
@@ -739,7 +751,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         } else if isCompact {
             updateCompactRows(notes: display)
         } else {
-            updateCardStack(notes: display, trash: false)
+            updateCardStack(notes: display)
         }
     }
 
@@ -784,20 +796,20 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     /// use — after the diffed path was found to abort silently during
     /// population on a real install, leaving Standard-density lists
     /// empty while the store counts stayed correct.
-    private func updateCardStack(notes: [SNNote], trash: Bool) {
+    private func updateCardStack(notes: [SNNote]) {
         clearStack()
         for note in notes {
-            let v = card(for: note, trash: trash)
+            let v = card(for: note)
             stackView.addArrangedSubview(v)
             pinWidth(v)
         }
     }
 
-    /// The NoteCardView inside a stack entry — the entry itself for
-    /// plain cards, or the first arranged subview of the Trash wrapper.
+    /// The NoteCardView for a stack entry — since v0.7.2 every card
+    /// entry is the card itself (the Trash wrapper is gone; Trash
+    /// populates TrashRowViews, which this returns nil for).
     private func cardView(in view: NSView) -> NoteCardView? {
-        if let card = view as? NoteCardView { return card }
-        return (view as? NSStackView)?.arrangedSubviews.first as? NoteCardView
+        view as? NoteCardView
     }
 
     /// Pins a stack subview's width to the stack. MUST be called only after
@@ -809,9 +821,8 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
                                     constant: -(insets.left + insets.right)).isActive = true
     }
 
-    private func card(for note: SNNote, trash: Bool = false) -> NSView {
+    private func card(for note: SNNote) -> NSView {
         let cardView = NoteCardView(note: note)
-        cardView.isTrashMode = trash
         cardView.isCompactFooter = isCompact
         cardView.onBecomeActive = { [weak self] card in self?.activeCard = card }
         cardView.onReorderDragBegan = { [weak self] card, event in
@@ -819,42 +830,17 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             card.beginReorderDrag(with: event)
         }
         cardView.translatesAutoresizingMaskIntoConstraints = false
-        if trash {
-            // Restore / Delete Forever row under trashed cards.
-            let wrapper = NSStackView()
-            wrapper.orientation = .vertical
-            wrapper.spacing = 4
-            wrapper.alignment = .leading
-            wrapper.addArrangedSubview(cardView)
-            let actions = NSStackView()
-            actions.orientation = .horizontal
-            actions.spacing = 8
-            let restore = NSButton(title: "Restore", target: self, action: #selector(restoreNote(_:)))
-            restore.identifier = NSUserInterfaceItemIdentifier(note.id.uuidString)
-            restore.bezelStyle = .rounded
-            let forever = NSButton(title: "Delete Forever", target: self, action: #selector(deleteForever(_:)))
-            forever.identifier = NSUserInterfaceItemIdentifier(note.id.uuidString)
-            forever.bezelStyle = .rounded
-            actions.addArrangedSubview(restore)
-            actions.addArrangedSubview(forever)
-            wrapper.addArrangedSubview(actions)
-            wrapper.translatesAutoresizingMaskIntoConstraints = false
-            return wrapper
-        }
         return cardView
     }
 
-    @objc private func restoreNote(_ sender: NSButton) {
-        guard let raw = sender.identifier?.rawValue, let id = UUID(uuidString: raw) else { return }
-        store.restoreFromTrash(id: id)
-    }
-
-    @objc private func deleteForever(_ sender: NSButton) {
-        guard let raw = sender.identifier?.rawValue, let id = UUID(uuidString: raw) else { return }
+    /// The Trash row's Delete Forever confirmation (v0.7.2): the one
+    /// irreversible action in the app always asks first.
+    private func confirmDeleteForever(id: UUID) {
         let alert = NSAlert()
-        alert.messageText = "Delete this note permanently?"
-        alert.informativeText = "This cannot be undone."
-        alert.addButton(withTitle: "Delete Forever")
+        alert.messageText = "Delete this note forever?"
+        alert.informativeText = "This can't be undone."
+        let deleteButton = alert.addButton(withTitle: "Delete Forever")
+        deleteButton.hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             store.deletePermanently(id: id)
@@ -877,7 +863,7 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
         if compactSelectedID == nil { compactSelectedID = notes.first?.id }
         for note in notes {
             if !note.isFolded {
-                let cardView = card(for: note, trash: false)
+                let cardView = card(for: note)
                 stackView.addArrangedSubview(cardView)
                 pinWidth(cardView)
             } else {
@@ -1149,10 +1135,11 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     }
 
     /// Creates a note of the given kind (the + menu's presets) in the
-    /// current folder and focuses it. A checklist note's cursor lands
-    /// after the first line's "- [ ] " prefix (character 6), ready to
-    /// type the first task; every other kind focuses at the end of
-    /// its (empty) seed, as a plain text note always has.
+    /// current folder and focuses it. Checklist and daily notes land
+    /// the cursor in their first task, a bulleted note in its first
+    /// bullet — each ready to type the first item; a markdown note
+    /// focuses at the end of its seed, and every other kind at the
+    /// end of its (empty) seed, as a plain text note always has.
     func createNoteAndFocus(kind: NoteKind) {
         guard let folderID = creationFolderID() else { return }
         let note = store.createNote(in: folderID, body: kind.seedBody, mode: kind.mode)
@@ -1162,9 +1149,21 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
             guard let self = self else { return }
             for sub in self.stackView.arrangedSubviews {
                 if let cardView = self.cardView(in: sub), cardView.noteID == note.id {
-                    if kind == .checklist {
+                    switch kind {
+                    case .checklist:
                         cardView.focusEditor(cursorAt: 6)
-                    } else {
+                    case .daily:
+                        // Past the seed heading, in the first task.
+                        let seed = kind.seedBody as NSString
+                        let marker = seed.range(of: "- [ ] ")
+                        if marker.location != NSNotFound {
+                            cardView.focusEditor(cursorAt: marker.location + marker.length)
+                        } else {
+                            cardView.focusEditor()
+                        }
+                    case .bulleted:
+                        cardView.focusEditor(cursorAt: 2)
+                    case .text, .markdown, .code, .plainText:
                         cardView.focusEditor()
                     }
                     self.activeCard = cardView
@@ -1188,10 +1187,11 @@ final class PanelContentController: NSViewController, NSMenuDelegate {
     }
 
     /// The + button in a note view offers the note kinds — the
-    /// distinct note types the design shows (text, checklist, code,
-    /// plain text) — plus a file picker, instead of creating a blank
-    /// text note immediately. ⌘N and the empty state's button keep
-    /// the instant text-note path (createNoteAndFocus()).
+    /// distinct note types the design shows (text, checklist,
+    /// bulleted, daily, markdown, code, plain text) — plus a file
+    /// picker, instead of creating a blank text note immediately.
+    /// ⌘N and the empty state's button keep the instant text-note
+    /// path (createNoteAndFocus()).
     private func showNewNoteMenu() {
         let menu = NSMenu()
         menu.delegate = self
@@ -2061,4 +2061,127 @@ private final class UtilityRowView: NSView {
     }
 
     @objc private func rowClicked() { onOpen?() }
+}
+
+/// One trashed note in the Trash presentation (v0.7.2): a full-width
+/// row in the folder-home row style — title, a "Deleted <date> · kept
+/// until <date>" detail, and Restore / Delete Forever buttons at the
+/// right. Trashed notes are never edited in place, so the row carries
+/// no editor and no card footer; the two actions are the whole UI.
+private final class TrashRowView: NSView {
+    var onRestore: (() -> Void)?
+    var onDeleteForever: (() -> Void)?
+
+    private var isHovered = false
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    init(note: SNNote) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        // Same no-border + soft-shadow treatment as FolderRowView
+        // (rubric §1.12).
+        layer?.cornerRadius = 10
+        layer?.shadowColor = NSColor(srgbRed: 20/255, green: 22/255, blue: 30/255, alpha: 1).cgColor
+        layer?.shadowOpacity = 0.06
+        layer?.shadowRadius = 1.5
+        layer?.shadowOffset = NSSize(width: 0, height: -1)
+        refreshSurfaces()
+
+        let title = NSTextField(labelWithString: note.title)
+        title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        title.textColor = SNTheme.primaryText
+        title.lineBreakMode = .byTruncatingTail
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        let detail = NSTextField(labelWithString: TrashRowView.detailText(for: note))
+        detail.font = NSFont.systemFont(ofSize: 11)
+        detail.textColor = SNTheme.tertiaryText
+        detail.lineBreakMode = .byTruncatingTail
+        detail.translatesAutoresizingMaskIntoConstraints = false
+
+        let textStack = NSStackView(views: [title, detail])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let restore = NSButton(title: "Restore", target: self, action: #selector(restoreClicked))
+        restore.bezelStyle = .rounded
+        restore.translatesAutoresizingMaskIntoConstraints = false
+        let forever = NSButton(title: "Delete Forever", target: self, action: #selector(deleteForeverClicked))
+        forever.bezelStyle = .rounded
+        forever.translatesAutoresizingMaskIntoConstraints = false
+
+        let actions = NSStackView(views: [restore, forever])
+        actions.orientation = .horizontal
+        actions.spacing = 8
+        actions.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(textStack); addSubview(actions)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 54),
+            textStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -10),
+            actions.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            actions.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        // Rows are only ever built in code; this exists to satisfy NSCoding.
+        super.init(coder: coder)
+    }
+
+    /// "Deleted Nov 27 · kept until Dec 27" — the deletion date and
+    /// the day the 30-day purge takes the note (Decision 1).
+    private static func detailText(for note: SNNote) -> String {
+        guard let deletedAt = note.deletedAt else { return "" }
+        let deleted = dateFormatter.string(from: deletedAt)
+        if let purgeDate = Calendar.current.date(byAdding: .day, value: 30, to: deletedAt) {
+            return "Deleted \(deleted) · kept until \(dateFormatter.string(from: purgeDate))"
+        }
+        return "Deleted \(deleted)"
+    }
+
+    /// (Re)applies the layer-baked theme surface — see
+    /// FolderRowView.refreshSurfaces for why this must run again on
+    /// every appearance change. The hover state lifts the row to the
+    /// focused-card surface; both are dynamic theme colours.
+    private func refreshSurfaces() {
+        layer?.backgroundColor = (isHovered ? SNTheme.cardFocusedBackground : SNTheme.cardBackground).cgColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshSurfaces()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isHovered = true
+        refreshSurfaces()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isHovered = false
+        refreshSurfaces()
+    }
+
+    @objc private func restoreClicked() { onRestore?() }
+    @objc private func deleteForeverClicked() { onDeleteForever?() }
 }

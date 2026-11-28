@@ -27,6 +27,9 @@ enum NoteMode: String, Codable, CaseIterable {
 enum NoteKind: CaseIterable {
     case text
     case checklist
+    case bulleted
+    case daily
+    case markdown
     case code
     case plainText
 
@@ -34,6 +37,9 @@ enum NoteKind: CaseIterable {
         switch self {
         case .text: return "Text Note"
         case .checklist: return "Checklist Note"
+        case .bulleted: return "Bulleted List Note"
+        case .daily: return "Daily Note"
+        case .markdown: return "Markdown Note"
         case .code: return "Code Note"
         case .plainText: return "Plain Text Note"
         }
@@ -42,7 +48,7 @@ enum NoteKind: CaseIterable {
     /// The rendering mode a note of this kind starts in.
     var mode: NoteMode {
         switch self {
-        case .text, .checklist: return .standard
+        case .text, .checklist, .bulleted, .daily, .markdown: return .standard
         case .code: return .code
         case .plainText: return .plain
         }
@@ -51,10 +57,19 @@ enum NoteKind: CaseIterable {
     /// The body a note of this kind starts with. The checklist seed is
     /// three empty tasks; the trailing space after the last "- [ ]"
     /// matches the first two lines so the seed parses as three tasks
-    /// and the editor opens ready to type the first one.
+    /// and the editor opens ready to type the first one. The bulleted
+    /// seed mirrors it with three empty bullets. The daily seed is
+    /// computed at access time so its heading always names today.
     var seedBody: String {
         switch self {
         case .checklist: return "- [ ] \n- [ ] \n- [ ] "
+        case .bulleted: return "- \n- \n- "
+        case .daily:
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEEE, MMMM d, yyyy"
+            return "# \(formatter.string(from: Date()))\n\n- [ ] \n- [ ] \n- [ ] "
+        case .markdown:
+            return "# Title\n\nWrite with **bold**, *italic*, and ::highlight:: marks.\n\n- [ ] A first task\n\n> A quote worth keeping\n\nInline `code` and fenced blocks work too."
         case .text, .code, .plainText: return ""
         }
     }
@@ -217,10 +232,23 @@ struct SNNote: Codable, Identifiable, Equatable {
     var isTrashed: Bool { deletedAt != nil }
 
     /// Title = first non-empty line, with leading Markdown decoration removed.
+    /// A task first line contributes its task text; a checklist whose
+    /// first task is still empty reads "Checklist · n of m done"
+    /// (from taskProgress) instead of "Untitled note", so a fresh
+    /// checklist seed is identifiable in rows and the Trash.
     var title: String {
         for rawLine in body.components(separatedBy: "\n") {
             var line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
+            if let taskText = SNNote.taskLineText(line) {
+                let cleaned = SNNote.cleaningInlineMarks(taskText)
+                if !cleaned.isEmpty { return cleaned }
+                let progress = taskProgress
+                if progress.total > 0 {
+                    return "Checklist · \(progress.done) of \(progress.total) done"
+                }
+                return "Untitled note"
+            }
             while line.hasPrefix("#") || line.hasPrefix(">") || line.hasPrefix("-") {
                 line.removeFirst()
                 line = line.trimmingCharacters(in: .whitespaces)
@@ -228,12 +256,28 @@ struct SNNote: Codable, Identifiable, Equatable {
                     line = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
                 }
             }
-            line = line.replacingOccurrences(of: "**", with: "")
-                       .replacingOccurrences(of: "::", with: "")
-                       .replacingOccurrences(of: "`", with: "")
+            line = SNNote.cleaningInlineMarks(line)
             return line.isEmpty ? "Untitled note" : line
         }
         return "Untitled note"
+    }
+
+    /// If `line` (already trimmed) is a task line — the same
+    /// "- [ ]" / "- [x]" / "- [X]" prefixes taskProgress counts —
+    /// returns the task's text with the marker stripped; otherwise nil.
+    private static func taskLineText(_ line: String) -> String? {
+        for marker in ["- [ ]", "- [x]", "- [X]"] where line.hasPrefix(marker) {
+            return String(line.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// The inline-mark cleanup the title has always applied: bold,
+    /// highlight and code ticks are decoration, not title text.
+    private static func cleaningInlineMarks(_ line: String) -> String {
+        line.replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "::", with: "")
+            .replacingOccurrences(of: "`", with: "")
     }
 
     /// (done, total) task counts parsed from `- [ ]` / `- [x]` lines.
