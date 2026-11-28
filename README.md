@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.7.0-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.7.1-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,7 +24,10 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.7.0**: note
+> 🚧 **Work in progress** — SilverNotes is at **v0.7.1**: the
+> Dark Mode folder-home fix (theme surfaces now re-bake when the
+> system appearance flips, so folder names stay readable), on
+> top of v0.7.0: note
 > types at creation (Text, Checklist, Code, Plain Text, and File
 > notes from the + menu), a Duplicate action in every note's gear
 > menu, and card-height hardening so long notes are never
@@ -53,7 +56,7 @@ nothing ever leaves the machine.
 > which are tracked in [ROADMAP.md](ROADMAP.md).
 > v0.5.0 was installed and used on a real Mac on November 26, 2026,
 > via the app's own Check for Updates — the self-update path
-> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1, v0.6.2 and v0.7.0 are CI-built;
+> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1, v0.6.2, v0.7.0 and v0.7.1 are CI-built;
 > their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
@@ -410,6 +413,19 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.7.1 (November 27, 2026) — Dark Mode folder-home fix,
+  CI-built, on-device confirmation pending.** Folder names
+  rendered near-invisible in Dark Mode: theme surfaces baked
+  into layers kept their light variant after a system
+  appearance flip while text flipped to its near-white dark
+  variant. Every persistent surface (folder/utility/compact/
+  rail rows, header pill, panel chrome, card rule and colour
+  strip, the Settings window) now re-bakes on appearance
+  change, the treatment note cards already had. The same
+  release aligns the dark theme with the mockup (Settings
+  dark surfaces, hover and code washes, a more distinct grey
+  note colour). Suite now 29 tests, including three pinning
+  that surfaces follow the appearance.
 - **v0.7.0 (November 27, 2026) — note types, Duplicate, and
   scroll hardening, CI-built, on-device confirmation pending.**
   The + button now offers the mockup's note kinds — Text,
