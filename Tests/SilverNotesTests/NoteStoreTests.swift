@@ -260,13 +260,21 @@ final class NoteStoreTests: XCTestCase {
     }
 
     func testNoteKindMappingsAndChecklistSeed() {
-        XCTAssertEqual(NoteKind.allCases.count, 4)
+        XCTAssertEqual(NoteKind.allCases.count, 7)
+        XCTAssertEqual(NoteKind.allCases, [.text, .checklist, .bulleted, .daily, .markdown, .code, .plainText],
+                       "the + menu lists the kinds in this order")
         XCTAssertEqual(NoteKind.text.displayName, "Text Note")
         XCTAssertEqual(NoteKind.checklist.displayName, "Checklist Note")
+        XCTAssertEqual(NoteKind.bulleted.displayName, "Bulleted List Note")
+        XCTAssertEqual(NoteKind.daily.displayName, "Daily Note")
+        XCTAssertEqual(NoteKind.markdown.displayName, "Markdown Note")
         XCTAssertEqual(NoteKind.code.displayName, "Code Note")
         XCTAssertEqual(NoteKind.plainText.displayName, "Plain Text Note")
         XCTAssertEqual(NoteKind.text.mode, .standard)
         XCTAssertEqual(NoteKind.checklist.mode, .standard)
+        XCTAssertEqual(NoteKind.bulleted.mode, .standard)
+        XCTAssertEqual(NoteKind.daily.mode, .standard)
+        XCTAssertEqual(NoteKind.markdown.mode, .standard)
         XCTAssertEqual(NoteKind.code.mode, .code)
         XCTAssertEqual(NoteKind.plainText.mode, .plain)
 
@@ -277,6 +285,56 @@ final class NoteStoreTests: XCTestCase {
         XCTAssertEqual(note.taskProgress.total, 3,
                        "the checklist seed must parse as three tasks")
         XCTAssertEqual(note.taskProgress.done, 0)
+    }
+
+    func testNoteKindSeeds() {
+        // Bulleted: three empty bullet lines, and NOT tasks.
+        XCTAssertEqual(NoteKind.bulleted.seedBody.components(separatedBy: "\n"), ["- ", "- ", "- "])
+        let bulleted = SNNote(folderID: UUID(), body: NoteKind.bulleted.seedBody)
+        XCTAssertEqual(bulleted.taskProgress.total, 0,
+                       "bullets are list lines, not tasks")
+        let renderedBullets = MarkdownEngine.render(source: NoteKind.bulleted.seedBody,
+                                                    mode: .standard, showMarkup: false)
+        XCTAssertTrue(renderedBullets.tasks.isEmpty)
+
+        // Daily: today's date as a heading over three empty tasks.
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d, yyyy"
+        XCTAssertTrue(NoteKind.daily.seedBody.hasPrefix("# \(formatter.string(from: Date()))"),
+                      "the daily seed's heading names today")
+        let daily = SNNote(folderID: UUID(), body: NoteKind.daily.seedBody)
+        XCTAssertEqual(daily.taskProgress.total, 3)
+        XCTAssertEqual(daily.taskProgress.done, 0)
+
+        // Markdown: a titled sampler containing exactly one task.
+        let markdown = SNNote(folderID: UUID(), body: NoteKind.markdown.seedBody)
+        XCTAssertEqual(markdown.title, "Title")
+        XCTAssertEqual(markdown.taskProgress.total, 1)
+    }
+
+    // MARK: Title derivation
+
+    func testTitleDerivation() {
+        func title(_ body: String) -> String { SNNote(folderID: UUID(), body: body).title }
+
+        // Task first lines contribute their text, marks cleaned.
+        XCTAssertEqual(title("- [ ] Buy milk"), "Buy milk")
+        XCTAssertEqual(title("- [x] Done thing"), "Done thing")
+        XCTAssertEqual(title("- [ ] **Bold** task"), "Bold task")
+
+        // A checklist whose first task is still empty names itself
+        // by its progress instead of "Untitled note" (v0.7.2).
+        XCTAssertEqual(title(NoteKind.checklist.seedBody), "Checklist · 0 of 3 done")
+        XCTAssertEqual(title("- [ ] \n- [x] a\n- [ ] b"), "Checklist · 1 of 3 done")
+
+        // Non-task first lines behave exactly as before.
+        XCTAssertEqual(title("# Heading"), "Heading")
+        XCTAssertEqual(title("Plain first line"), "Plain first line")
+        XCTAssertEqual(title("- a bullet"), "a bullet")
+
+        // Nothing title-able at all.
+        XCTAssertEqual(title(""), "Untitled note")
+        XCTAssertEqual(title("  \n\n"), "Untitled note")
     }
 
     // MARK: Persistence

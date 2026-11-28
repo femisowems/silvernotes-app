@@ -31,6 +31,20 @@ final class NoteTextView: NSTextView {
     /// Called when the user toggles a task checkbox by clicking it.
     var onTaskToggled: (() -> Void)?
 
+    /// Called on ⌘⏎ — the keyboard twin of the checkbox click.
+    /// Returns true when a task was toggled and the key is consumed.
+    /// ⌥⌘⏎ is the panel's fold shortcut and is deliberately excluded.
+    var onCommandReturn: (() -> Bool)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.option),
+           (event.keyCode == 36 || event.keyCode == 76),
+           onCommandReturn?() == true {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
     /// Plain initializer used by NoteCardView; NSTextView does not inherit
     /// a no-argument initializer once init(frame:textContainer:) is overridden.
     /// Builds the text stack by hand so the layout manager is the custom

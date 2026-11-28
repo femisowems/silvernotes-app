@@ -465,3 +465,184 @@ enum MarkdownEngine {
         return nil
     }
 }
+
+// MARK: - Task line editing
+
+/// One source edit produced by the task-line helpers below: replace
+/// `range` of the old source with `replacement`. `source` is the full
+/// resulting text and `cursor` the natural caret position in it, so
+/// tests can assert on plain strings while the editor applies just
+/// the ranged change through its own undoable editing path. All
+/// offsets are UTF-16, matching NSString / NSTextView coordinates.
+struct TaskLineEdit {
+    let source: String
+    let cursor: Int
+    let range: NSRange
+    let replacement: String
+}
+
+/// Pure checklist line edits (v0.7.2): the keystroke-level behaviour
+/// of checklist items — Enter continuing the list, Backspace lifting
+/// an item back to plain text, indent/outdent, and toggling — with no
+/// view involvement, so XCTest covers them directly. A "task line" is
+/// parsed exactly as the renderer parses it (see parseTaskLine):
+/// optional leading spaces, then "- [", a check character, "]", and
+/// an optional single space before the content.
+enum TaskLineEditing {
+
+    /// The parsed shape of one source line, when it is a task line.
+    private struct TaskLine {
+        /// Offset of the line's first character in the source.
+        let lineStart: Int
+        /// Length of the line, excluding any line terminator.
+        let lineLength: Int
+        /// Count of leading space characters.
+        let indent: Int
+        /// Offset of the task's content (after marker + one space).
+        let contentStart: Int
+        /// Offset of the checkbox character (" ", "x" or "X").
+        let checkboxStart: Int
+        let isChecked: Bool
+        /// The task's content text ("" for an untouched task).
+        var content: String
+    }
+
+    /// Parses the line at `lineStart` in `ns`. Nil when the line is
+    /// not a task line.
+    private static func parseTask(lineStart: Int, in ns: NSString) -> TaskLine? {
+        let lineRange = ns.lineRange(for: NSRange(location: lineStart, length: 0))
+        var lineLength = lineRange.length
+        // lineRange includes the line terminator; the line itself doesn't.
+        if lineLength > 0, ns.character(at: lineStart + lineLength - 1) == 0x0A { lineLength -= 1 }
+        if lineLength > 0, ns.character(at: lineStart + lineLength - 1) == 0x0D { lineLength -= 1 }
+        guard lineLength >= 5 else { return nil }
+        var indent = 0
+        while indent < lineLength, ns.character(at: lineStart + indent) == 0x20 { indent += 1 }
+        guard lineLength - indent >= 5 else { return nil }
+        let marker = ns.substring(with: NSRange(location: lineStart + indent, length: 3))
+        guard marker == "- [" else { return nil }
+        let checkChar = ns.substring(with: NSRange(location: lineStart + indent + 3, length: 1))
+        guard checkChar == " " || checkChar == "x" || checkChar == "X" else { return nil }
+        guard ns.substring(with: NSRange(location: lineStart + indent + 4, length: 1)) == "]" else { return nil }
+        var contentStart = lineStart + indent + 5
+        if lineLength - indent > 5,
+           ns.substring(with: NSRange(location: lineStart + indent + 5, length: 1)) == " " {
+            contentStart += 1
+        }
+        let content = ns.substring(with: NSRange(location: contentStart,
+                                                 length: lineStart + lineLength - contentStart))
+        return TaskLine(lineStart: lineStart, lineLength: lineLength, indent: indent,
+                        contentStart: contentStart, checkboxStart: lineStart + indent + 3,
+                        isChecked: checkChar == "x" || checkChar == "X", content: content)
+    }
+
+    /// Start offset of the line containing `offset`.
+    private static func lineStart(of offset: Int, in ns: NSString) -> Int {
+        ns.lineRange(for: NSRange(location: min(max(offset, 0), ns.length), length: 0)).location
+    }
+
+    /// The 0-based index of the line containing `offset`.
+    static func lineIndex(at offset: Int, in source: String) -> Int {
+        let ns = source as NSString
+        let clamped = min(max(offset, 0), ns.length)
+        return ns.substring(with: NSRange(location: 0, length: clamped))
+            .components(separatedBy: "\n").count - 1
+    }
+
+    /// Start offset of the line with 0-based index `lineIndex`, or nil
+    /// when the source has fewer lines.
+    private static func lineStart(ofLine lineIndex: Int, in ns: NSString) -> Int? {
+        guard lineIndex >= 0 else { return nil }
+        var start = 0
+        var index = 0
+        while index < lineIndex {
+            let range = ns.range(of: "\n", options: [], range: NSRange(location: start, length: ns.length - start))
+            guard range.location != NSNotFound else { return nil }
+            start = range.location + 1
+            index += 1
+        }
+        return start
+    }
+
+    private static func applying(range: NSRange, replacement: String, cursor: Int, to source: String) -> TaskLineEdit {
+        let ns = source as NSString
+        let newSource = ns.replacingCharacters(in: range, with: replacement)
+        return TaskLineEdit(source: newSource, cursor: cursor, range: range, replacement: replacement)
+    }
+
+    /// Enter pressed with the caret on a task line, at or after the
+    /// task's content start. A task with content splits at the caret:
+    /// the remainder continues as a fresh task on the next line, at
+    /// the same indentation. An empty task ends the list instead —
+    /// its marker is stripped, leaving a plain empty line and no new
+    /// line is inserted. Nil when the caret is not on a task line (or
+    /// sits inside the marker): the caller falls back to a plain
+    /// newline.
+    static func enterOnTask(source: String, cursor: Int) -> TaskLineEdit? {
+        let ns = source as NSString
+        let clamped = min(max(cursor, 0), ns.length)
+        let start = lineStart(of: clamped, in: ns)
+        guard let task = parseTask(lineStart: start, in: ns), clamped >= task.contentStart else { return nil }
+        if task.content.trimmingCharacters(in: .whitespaces).isEmpty {
+            // End the list: the whole line's text goes, caret to its start.
+            let range = NSRange(location: task.lineStart, length: task.lineLength)
+            return applying(range: range, replacement: "", cursor: task.lineStart, to: source)
+        }
+        let indent = String(repeating: " ", count: task.indent)
+        let insertion = "\n" + indent + "- [ ] "
+        return applying(range: NSRange(location: clamped, length: 0),
+                        replacement: insertion,
+                        cursor: clamped + (insertion as NSString).length,
+                        to: source)
+    }
+
+    /// Backspace with the caret exactly at a task's content start:
+    /// lifts the item back to plain text by removing the indentation
+    /// and the marker, leaving the content where it was. Nil anywhere
+    /// else — ordinary character deletion applies.
+    static func backspaceAtTaskStart(source: String, cursor: Int) -> TaskLineEdit? {
+        let ns = source as NSString
+        let clamped = min(max(cursor, 0), ns.length)
+        let start = lineStart(of: clamped, in: ns)
+        guard let task = parseTask(lineStart: start, in: ns), clamped == task.contentStart else { return nil }
+        let range = NSRange(location: task.lineStart, length: task.contentStart - task.lineStart)
+        return applying(range: range, replacement: "", cursor: task.lineStart, to: source)
+    }
+
+    /// Flips the checkbox of the task on the given 0-based line.
+    /// Nil when that line is not a task line (or doesn't exist).
+    static func toggleTask(atLine lineIndex: Int, in source: String) -> TaskLineEdit? {
+        let ns = source as NSString
+        guard let start = lineStart(ofLine: lineIndex, in: ns),
+              let task = parseTask(lineStart: start, in: ns) else { return nil }
+        let range = NSRange(location: task.checkboxStart, length: 1)
+        return applying(range: range, replacement: task.isChecked ? " " : "x",
+                        cursor: task.checkboxStart, to: source)
+    }
+
+    /// Indents the task on the given line by two spaces — the
+    /// renderer's parser tolerates leading spaces, so the line stays
+    /// a task, one level deeper. Nil for non-task lines.
+    static func indentTask(atLine lineIndex: Int, in source: String) -> TaskLineEdit? {
+        let ns = source as NSString
+        guard let start = lineStart(ofLine: lineIndex, in: ns),
+              let task = parseTask(lineStart: start, in: ns) else { return nil }
+        return applying(range: NSRange(location: task.lineStart, length: 0),
+                        replacement: "  ",
+                        cursor: task.contentStart + 2,
+                        to: source)
+    }
+
+    /// Removes up to two leading spaces from the task on the given
+    /// line. Nil for non-task lines and for tasks already flush left.
+    static func outdentTask(atLine lineIndex: Int, in source: String) -> TaskLineEdit? {
+        let ns = source as NSString
+        guard let start = lineStart(ofLine: lineIndex, in: ns),
+              let task = parseTask(lineStart: start, in: ns), task.indent > 0 else { return nil }
+        let removed = min(2, task.indent)
+        return applying(range: NSRange(location: task.lineStart, length: removed),
+                        replacement: "",
+                        cursor: task.contentStart - removed,
+                        to: source)
+    }
+}

@@ -92,9 +92,93 @@ final class MarkdownEngineTests: XCTestCase {
         XCTAssertTrue(found, "==…== must apply a single underline over its content")
     }
 
-    // NOTE: there is deliberately no task-toggle test here. Toggling
-    // a checklist item is not an engine or store API — it lives in
-    // the view layer (NoteTextView.toggleTask flips the checkbox
-    // character through the text view's own editing path), so there
-    // is nothing at this layer to pin.
+    // MARK: Task line editing (v0.7.2)
+
+    /// The pure TaskLineEditing helpers carry the checklist
+    /// keystroke behaviour (Enter / Backspace / Tab / toggle), so
+    /// they are pinned here directly on source strings. The view
+    /// layer still applies the results through the text view's own
+    /// editing path (undoable, persisted like typing) — what these
+    /// tests pin is the edit computation itself.
+
+    func testEnterContinuesTaskAtLineEnd() throws {
+        let edit = try XCTUnwrap(TaskLineEditing.enterOnTask(source: "- [ ] Buy milk", cursor: 14))
+        XCTAssertEqual(edit.source, "- [ ] Buy milk\n- [ ] ")
+        XCTAssertEqual(edit.cursor, 21)
+        XCTAssertEqual(edit.range, NSRange(location: 14, length: 0))
+        XCTAssertEqual(edit.replacement, "\n- [ ] ")
+    }
+
+    func testEnterSplitsTaskAtCursor() throws {
+        let edit = try XCTUnwrap(TaskLineEditing.enterOnTask(source: "- [ ] Buy milk", cursor: 10))
+        XCTAssertEqual(edit.source, "- [ ] Buy \n- [ ] milk")
+        XCTAssertEqual(edit.cursor, 17)
+    }
+
+    func testEnterKeepsTaskIndentation() throws {
+        let edit = try XCTUnwrap(TaskLineEditing.enterOnTask(source: "  - [ ] Task", cursor: 12))
+        XCTAssertEqual(edit.source, "  - [ ] Task\n  - [ ] ")
+        XCTAssertEqual(edit.cursor, 21)
+    }
+
+    func testEnterOnEmptyTaskEndsTheList() throws {
+        let solo = try XCTUnwrap(TaskLineEditing.enterOnTask(source: "- [ ] ", cursor: 6))
+        XCTAssertEqual(solo.source, "")
+        XCTAssertEqual(solo.cursor, 0)
+
+        // The middle task of three: its line becomes a plain empty
+        // line, the surrounding tasks are untouched.
+        let middle = try XCTUnwrap(TaskLineEditing.enterOnTask(
+            source: "- [ ] a\n- [ ] \n- [ ] b", cursor: 14))
+        XCTAssertEqual(middle.source, "- [ ] a\n\n- [ ] b")
+        XCTAssertEqual(middle.cursor, 8)
+    }
+
+    func testEnterDeclinesNonTaskLinesAndMarkerInterior() {
+        XCTAssertNil(TaskLineEditing.enterOnTask(source: "hello", cursor: 5))
+        XCTAssertNil(TaskLineEditing.enterOnTask(source: "- [ ] Buy", cursor: 2),
+                     "a caret inside the marker keeps the plain newline")
+        XCTAssertNil(TaskLineEditing.enterOnTask(source: "- a bullet", cursor: 10))
+    }
+
+    func testBackspaceAtTaskStartStripsMarker() throws {
+        let edit = try XCTUnwrap(TaskLineEditing.backspaceAtTaskStart(source: "- [ ] Buy milk", cursor: 6))
+        XCTAssertEqual(edit.source, "Buy milk")
+        XCTAssertEqual(edit.cursor, 0)
+
+        let indented = try XCTUnwrap(TaskLineEditing.backspaceAtTaskStart(source: "  - [ ] Buy", cursor: 8))
+        XCTAssertEqual(indented.source, "Buy")
+        XCTAssertEqual(indented.cursor, 0)
+    }
+
+    func testBackspaceDeclinesAwayFromContentStart() {
+        XCTAssertNil(TaskLineEditing.backspaceAtTaskStart(source: "- [ ] Buy milk", cursor: 7))
+        XCTAssertNil(TaskLineEditing.backspaceAtTaskStart(source: "- [ ] Buy milk", cursor: 0))
+        XCTAssertNil(TaskLineEditing.backspaceAtTaskStart(source: "plain", cursor: 0))
+    }
+
+    func testToggleTaskFlipsCheckbox() throws {
+        let source = "- [ ] a\n- [x] b"
+        XCTAssertEqual(TaskLineEditing.toggleTask(atLine: 0, in: source)?.source, "- [x] a\n- [x] b")
+        XCTAssertEqual(TaskLineEditing.toggleTask(atLine: 1, in: source)?.source, "- [x] a\n- [ ] b")
+        XCTAssertNil(TaskLineEditing.toggleTask(atLine: 0, in: "plain line"))
+        XCTAssertNil(TaskLineEditing.toggleTask(atLine: 5, in: source))
+    }
+
+    func testIndentAndOutdentTask() throws {
+        let indented = try XCTUnwrap(TaskLineEditing.indentTask(atLine: 0, in: "- [ ] a"))
+        XCTAssertEqual(indented.source, "  - [ ] a")
+        // The renderer's parser tolerates leading spaces: the
+        // indented line still parses as exactly one task.
+        let rendered = MarkdownEngine.render(source: indented.source, mode: .standard, showMarkup: false)
+        XCTAssertEqual(rendered.tasks.count, 1)
+        XCTAssertEqual(rendered.tasks.first?.isChecked, false)
+
+        let outdented = try XCTUnwrap(TaskLineEditing.outdentTask(atLine: 0, in: "  - [ ] a"))
+        XCTAssertEqual(outdented.source, "- [ ] a")
+        XCTAssertNil(TaskLineEditing.outdentTask(atLine: 0, in: "- [ ] a"),
+                     "a flush-left task cannot outdent")
+        XCTAssertNil(TaskLineEditing.indentTask(atLine: 0, in: "plain line"))
+        XCTAssertNil(TaskLineEditing.outdentTask(atLine: 0, in: "  plain line"))
+    }
 }
