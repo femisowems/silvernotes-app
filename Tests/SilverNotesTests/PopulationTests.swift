@@ -158,11 +158,27 @@ final class PopulationTests: XCTestCase {
         assertBottomBar("4 notes")
     }
 
+    /// v0.7.2 design change: Trash populates full-width ROWS, not
+    /// cards — a trashed note is identified and acted on (Restore /
+    /// Delete Forever), never edited in place. This replaces the
+    /// pre-v0.7.2 assertion that the entry was a card wrapper.
     func testTrashPopulatesTrashedNotes() throws {
         controller.openTrash()
         let stack = try XCTUnwrap(findCardStack())
-        XCTAssertEqual(stack.arrangedSubviews.count, 1,
-                       "Trash must hold one entry per trashed note")
+        XCTAssertEqual(stack.arrangedSubviews.count, store.trashedNotes.count,
+                       "Trash must hold one row per trashed note")
+        let row = try XCTUnwrap(stack.arrangedSubviews.first)
+        XCTAssertFalse(row is NoteCardView,
+                       "Trash entries are rows, not editable note cards")
+        let descendants = allDescendants(of: row)
+        XCTAssertTrue(descendants.contains { ($0 as? NSTextField)?.stringValue == "trashed" },
+                      "the row shows the trashed note's title")
+        XCTAssertTrue(descendants.contains {
+            ($0 as? NSTextField)?.stringValue.hasPrefix("Deleted ") == true
+        }, "the row shows when the note was deleted and how long it is kept")
+        let buttonTitles = descendants.compactMap { ($0 as? NSButton)?.title }
+        XCTAssertTrue(buttonTitles.contains("Restore"))
+        XCTAssertTrue(buttonTitles.contains("Delete Forever"))
         assertBottomBar("Notes are permanently deleted after 30 days")
     }
 

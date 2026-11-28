@@ -66,6 +66,18 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
     private var progressHeightConstraint: NSLayoutConstraint!
     private var progressBarHeightConstraint: NSLayoutConstraint!
     private var textTopConstraint: NSLayoutConstraint!
+    /// "+ Add item" row (v0.7.2): sits between the progress label and
+    /// the footer on notes that contain tasks; its height constraint
+    /// collapses it away otherwise, and the footer's top constraint
+    /// compensates so a hidden row costs no extra space.
+    private let addItemButton = NSButton(title: "+ Add item", target: nil, action: nil)
+    private var addItemHeightConstraint: NSLayoutConstraint!
+    private var footerTopConstraint: NSLayoutConstraint!
+    /// Hover delete for task lines (v0.7.2): a small × floated at the
+    /// card's right edge, vertically aligned with the hovered task.
+    private let taskDeleteButton = NSButton(title: "×", target: nil, action: nil)
+    private var hoveredTaskLineRange: NSRange?
+    private var taskTrackingArea: NSTrackingArea?
     private var lastColorStyle: NoteColorStyle?
     private var isEditing = false
     private var renderWorkItem: DispatchWorkItem?
@@ -139,6 +151,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         textScroll.hasVerticalScroller = false
         textScroll.translatesAutoresizingMaskIntoConstraints = false
         textView.delegate = self
+        textView.onCommandReturn = { [weak self] in self?.toggleTaskAtCursor() ?? false }
         textView.translatesAutoresizingMaskIntoConstraints = false
         textScroll.documentView = textView
         addSubview(textScroll)
@@ -170,6 +183,33 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         addSubview(progressLabel)
         progressHeightConstraint = progressLabel.heightAnchor.constraint(equalToConstant: 0)
 
+        // "+ Add item" (v0.7.2): one click appends a fresh task and
+        // focuses it — no hunting for the end of the last task line.
+        // Tertiary, borderless, left-aligned with the body text.
+        addItemButton.target = self
+        addItemButton.action = #selector(addTaskItem)
+        addItemButton.bezelStyle = .inline
+        addItemButton.isBordered = false
+        addItemButton.font = NSFont.systemFont(ofSize: 11)
+        addItemButton.contentTintColor = SNTheme.tertiaryText
+        addItemButton.alignment = .left
+        addItemButton.translatesAutoresizingMaskIntoConstraints = false
+        addItemButton.isHidden = true
+        addSubview(addItemButton)
+        addItemHeightConstraint = addItemButton.heightAnchor.constraint(equalToConstant: 0)
+
+        // Hover × for task lines (v0.7.2): frame-positioned over the
+        // text area's right edge; updateTaskDeleteButton() places it.
+        taskDeleteButton.target = self
+        taskDeleteButton.action = #selector(deleteHoveredTask)
+        taskDeleteButton.bezelStyle = .inline
+        taskDeleteButton.isBordered = false
+        taskDeleteButton.font = NSFont.systemFont(ofSize: 13)
+        taskDeleteButton.contentTintColor = SNTheme.tertiaryText
+        taskDeleteButton.toolTip = "Delete item"
+        taskDeleteButton.isHidden = true
+        addSubview(taskDeleteButton)
+
         buildFooter()
         addSubview(footerView)
 
@@ -182,6 +222,10 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         footerView.addSubview(footerRule)
 
         textHeightConstraint = textScroll.heightAnchor.constraint(equalToConstant: 60)
+        // The footer hangs below the (collapsible) Add-item row;
+        // updateAddItemVisibility adjusts this constant so a hidden
+        // row leaves the footer's spacing exactly as it was before.
+        footerTopConstraint = footerView.topAnchor.constraint(equalTo: addItemButton.bottomAnchor, constant: 0)
         // Card padding per the rendered package (audit 1.6): 11 top /
         // 13 sides / 7 bottom. The text view's own 6 pt inset counts
         // toward the top and sides: 5 + 6 = 11, 7 + 6 = 13.
@@ -214,7 +258,11 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
             progressLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
             progressHeightConstraint,
 
-            footerView.topAnchor.constraint(equalTo: progressLabel.bottomAnchor, constant: 2),
+            addItemButton.topAnchor.constraint(equalTo: progressLabel.bottomAnchor, constant: 2),
+            addItemButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
+            addItemHeightConstraint,
+
+            footerTopConstraint,
             footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -397,6 +445,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         textView.refreshRendering()
         updateTextHeight()
         lastConfiguredNote = note
+        updateAddItemVisibility(for: note)
     }
 
     func reloadFromStore() {
@@ -426,6 +475,8 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
             // Plain first line, no disclosure prefix (audit 4.12).
             foldedLabel.stringValue = note.title
         }
+        hideTaskDeleteButton()
+        updateAddItemVisibility(for: note)
     }
 
     /// Applies the note's colour in the Appearance pane's chosen style:
@@ -448,6 +499,38 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     private func applyTrashMode() {
         textView.isEditable = !isTrashMode
+        if isTrashMode { hideTaskDeleteButton() }
+        if let note = lastConfiguredNote { updateAddItemVisibility(for: note) }
+    }
+
+    /// The "+ Add item" row shows only where appending a task makes
+    /// sense: a Standard-mode note that already contains at least one
+    /// task, unfolded, and not in the Trash. Its height collapses to
+    /// zero otherwise, with the footer's top constant compensating so
+    /// the card's spacing is unchanged.
+    private func updateAddItemVisibility(for note: SNNote?) {
+        let visible = !isTrashMode
+            && note?.isFolded == false
+            && note?.mode == .standard
+            && (note?.taskProgress.total ?? 0) > 0
+        addItemButton.isHidden = !visible
+        addItemHeightConstraint?.constant = visible ? 16 : 0
+        footerTopConstraint?.constant = visible ? 2 : 0
+    }
+
+    /// Appends a fresh empty task at the end of the body and puts the
+    /// caret in it, through the text view's own editing path so the
+    /// change is undoable and persists like typed text.
+    @objc private func addTaskItem() {
+        guard !isTrashMode else { return }
+        let ns = textView.string as NSString
+        let insertion = ns.length == 0 ? "- [ ] " : (textView.string.hasSuffix("\n") ? "- [ ] " : "\n- [ ] ")
+        let endRange = NSRange(location: ns.length, length: 0)
+        if textView.shouldChangeText(in: endRange, replacementString: insertion) {
+            textView.insertText(insertion, replacementRange: endRange)
+            textView.didChangeText()
+        }
+        focusEditor(cursorAt: (textView.string as NSString).length)
     }
 
     // MARK: Focus appearance
@@ -508,6 +591,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     func textDidChange(_ notification: Notification) {
         onBecomeActive?(self)
+        hideTaskDeleteButton()
         store.updateNoteBody(id: noteID, body: textView.string)
         // Everything derived from the text — the (attribute-only)
         // re-render, the height pass, the timestamp, the task progress —
@@ -521,6 +605,7 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
             if let note = self.store.note(id: self.noteID) {
                 self.timestampLabel.stringValue = NoteCardView.timestampText(for: note.updatedAt)
                 self.updateProgressLabel(note)
+                self.updateAddItemVisibility(for: note)
             }
         }
         renderWorkItem = work
@@ -533,6 +618,176 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
         } else {
             FormattingToolbar.shared.hide()
         }
+    }
+
+    // MARK: Task line keys (v0.7.2)
+
+    /// The editor's command seam: Enter, Backspace, Tab and
+    /// Shift-Tab get checklist behaviour on task lines, computed by
+    /// the pure TaskLineEditing helpers and applied through the text
+    /// view's own editing path (undoable, persisted like typing).
+    /// Anything the helpers decline falls through to the standard
+    /// command, untouched.
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard !isTrashMode, self.textView.mode == .standard,
+              self.textView.selectedRange().length == 0 else { return false }
+        let source = self.textView.string
+        let cursor = self.textView.selectedRange().location
+
+        if commandSelector == #selector(NSTextView.insertNewline(_:)) {
+            guard let edit = TaskLineEditing.enterOnTask(source: source, cursor: cursor) else { return false }
+            applyTaskLineEdit(edit)
+            return true
+        }
+        if commandSelector == #selector(NSTextView.deleteBackward(_:)) {
+            guard let edit = TaskLineEditing.backspaceAtTaskStart(source: source, cursor: cursor) else { return false }
+            applyTaskLineEdit(edit)
+            return true
+        }
+        if commandSelector == #selector(NSTextView.insertTab(_:))
+            || commandSelector == #selector(NSTextView.insertBacktab(_:)) {
+            let lineIndex = TaskLineEditing.lineIndex(at: cursor, in: source)
+            let edit: TaskLineEdit?
+            if commandSelector == #selector(NSTextView.insertTab(_:)) {
+                edit = TaskLineEditing.indentTask(atLine: lineIndex, in: source)
+            } else {
+                edit = TaskLineEditing.outdentTask(atLine: lineIndex, in: source)
+            }
+            guard let edit = edit else { return false }
+            // The caret keeps its position relative to the line's
+            // content: it shifts by the indentation delta, clamped
+            // to the line's start.
+            let ns = source as NSString
+            let lineStart = ns.lineRange(for: NSRange(location: min(cursor, ns.length), length: 0)).location
+            let delta = (edit.replacement as NSString).length - edit.range.length
+            let newCursor = min(max(cursor + delta, lineStart), (edit.source as NSString).length)
+            if self.textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
+                self.textView.insertText(edit.replacement, replacementRange: edit.range)
+                self.textView.didChangeText()
+            }
+            self.textView.setSelectedRange(NSRange(location: newCursor, length: 0))
+            return true
+        }
+        return false
+    }
+
+    /// Applies one helper edit and lands the caret where the helper
+    /// says it belongs in the new source.
+    private func applyTaskLineEdit(_ edit: TaskLineEdit) {
+        if textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
+            textView.insertText(edit.replacement, replacementRange: edit.range)
+            textView.didChangeText()
+        }
+        textView.setSelectedRange(NSRange(location: min(edit.cursor, (textView.string as NSString).length), length: 0))
+    }
+
+    /// ⌘⏎ (wired from NoteTextView.keyDown): toggles the task on the
+    /// caret's line, flipping its checkbox character through the same
+    /// editing path a checkbox click uses. False when the caret is
+    /// not on a task line, so the key keeps its default meaning.
+    private func toggleTaskAtCursor() -> Bool {
+        guard !isTrashMode, textView.mode == .standard else { return false }
+        let ns = textView.string as NSString
+        let cursor = min(textView.selectedRange().location, ns.length)
+        let lineRange = ns.lineRange(for: NSRange(location: cursor, length: 0))
+        guard let marker = textView.taskMarkers.first(where: {
+            NSLocationInRange($0.markerRange.location, lineRange)
+        }) else { return false }
+        let replacement = marker.isChecked ? " " : "x"
+        if textView.shouldChangeText(in: marker.checkboxCharRange, replacementString: replacement) {
+            textView.insertText(replacement, replacementRange: marker.checkboxCharRange)
+            textView.didChangeText()
+        }
+        return true
+    }
+
+    // MARK: Task hover delete (v0.7.2)
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area = taskTrackingArea { removeTrackingArea(area) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        taskTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateTaskDeleteButton(for: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hideTaskDeleteButton()
+    }
+
+    /// While this card is being edited, hovering a task line floats
+    /// the × at the card's right edge, aligned with that line. The
+    /// hit-test mirrors the checkbox click path in NoteTextView:
+    /// window point → container coordinates → character index →
+    /// the line's task marker.
+    private func updateTaskDeleteButton(for event: NSEvent) {
+        guard isEditing, !isTrashMode, textView.mode == .standard,
+              let note = lastConfiguredNote, !note.isFolded,
+              let layoutManager = textView.layoutManager, let container = textView.textContainer
+        else { hideTaskDeleteButton(); return }
+        let pointInCard = convert(event.locationInWindow, from: nil)
+        guard textScroll.frame.contains(pointInCard) else { hideTaskDeleteButton(); return }
+        var pointInContainer = textView.convert(event.locationInWindow, from: nil)
+        pointInContainer.x -= textView.textContainerInset.width
+        pointInContainer.y -= textView.textContainerInset.height
+        layoutManager.ensureLayout(for: container)
+        var fraction: CGFloat = 0
+        let charIndex = layoutManager.characterIndex(for: pointInContainer, in: container,
+                                                     fractionOfDistanceBetweenInsertionPoints: &fraction)
+        let ns = textView.string as NSString
+        guard charIndex <= ns.length else { hideTaskDeleteButton(); return }
+        let lineRange = ns.lineRange(for: NSRange(location: charIndex, length: 0))
+        guard let marker = textView.taskMarkers.first(where: {
+            NSLocationInRange($0.markerRange.location, lineRange)
+        }) else { hideTaskDeleteButton(); return }
+
+        // The line's fragment rect, in container coordinates like
+        // the layout manager's tick drawing; offset by the text
+        // inset (the same correction the click path applies in
+        // reverse), then converted up into card coordinates.
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: marker.markerRange.location)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+        let rectInText = NSRect(x: fragment.minX + textView.textContainerInset.width,
+                                y: fragment.minY + textView.textContainerInset.height,
+                                width: fragment.width, height: fragment.height)
+        let rectInCard = textView.convert(rectInText, to: self)
+        hoveredTaskLineRange = lineRange
+        taskDeleteButton.frame = NSRect(x: bounds.width - 13 - 18,
+                                        y: rectInCard.midY - 8,
+                                        width: 18, height: 16)
+        taskDeleteButton.isHidden = false
+    }
+
+    private func hideTaskDeleteButton() {
+        taskDeleteButton.isHidden = true
+        hoveredTaskLineRange = nil
+    }
+
+    /// Removes the hovered task's whole line — including its line
+    /// terminator, or the preceding one when it is the final line —
+    /// through the text view's editing path.
+    @objc private func deleteHoveredTask() {
+        guard let lineRange = hoveredTaskLineRange else { return }
+        let ns = textView.string as NSString
+        var deletion = lineRange
+        if deletion.location + deletion.length >= ns.length, deletion.location > 0,
+           !textView.string.hasSuffix("\n") {
+            deletion = NSRange(location: deletion.location - 1, length: deletion.length + 1)
+        }
+        hideTaskDeleteButton()
+        if textView.shouldChangeText(in: deletion, replacementString: "") {
+            textView.insertText("", replacementRange: deletion)
+            textView.didChangeText()
+        }
+        window?.makeFirstResponder(textView)
     }
 
     /// Focuses the editor, placing the cursor at the end of the text —

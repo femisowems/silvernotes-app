@@ -28,6 +28,7 @@ final class GearMenu: NSObject {
     private var panel: NSPanel?
     private var actions: Actions?
     private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
     private var localKeyMonitor: Any?
     private var isOpen = false
 
@@ -190,6 +191,20 @@ final class GearMenu: NSObject {
             }
             return event
         }
+        // The global monitor above only sees clicks delivered to OTHER
+        // apps; clicks inside the app (elsewhere in the panel, say)
+        // reach this app's own windows and never touch it, so the menu
+        // used to survive them. This local twin dismisses on any
+        // in-app click outside the menu and consumes it, so the click
+        // that closes the menu doesn't also trigger whatever it hit.
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, self.isOpen, let panel = self.panel else { return event }
+            if !panel.frame.contains(NSEvent.mouseLocation) {
+                self.dismiss(runAction: nil)
+                return nil
+            }
+            return event
+        }
     }
 
     /// Below the anchor button, flipped above it when the screen's
@@ -250,6 +265,7 @@ final class GearMenu: NSObject {
         guard isOpen else { return }
         isOpen = false
         if let monitor = globalClickMonitor { NSEvent.removeMonitor(monitor); globalClickMonitor = nil }
+        if let monitor = localClickMonitor { NSEvent.removeMonitor(monitor); localClickMonitor = nil }
         if let monitor = localKeyMonitor { NSEvent.removeMonitor(monitor); localKeyMonitor = nil }
         panel?.orderOut(nil)
         panel = nil
