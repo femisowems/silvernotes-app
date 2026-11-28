@@ -103,16 +103,17 @@ enum SNTheme {
     }
 
     /// Settings window surfaces (rubric §1.16). The package renders
-    /// Settings in light only; the dark values are the nearest neutral
-    /// steps, unverifiable against the package.
+    /// Settings in light only; the dark values follow the mockup's
+    /// own dark surface steps (v0.7.1 dark pass): window = the dark
+    /// surface step, sidebar = the raised dark surface step.
     static var settingsWindowBackground: NSColor {
         dynamic(light: hex(0xF5F5F7),
-                dark: hex(0x1E1E21))
+                dark: hex(0x1D1D21))
     }
 
     static var settingsSidebarBackground: NSColor {
         dynamic(light: hex(0xECECF1),
-                dark: hex(0x2C2C31))
+                dark: hex(0x26262B))
     }
 
     static var settingsSidebarBorder: NSColor {
@@ -134,10 +135,11 @@ enum SNTheme {
                 dark: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.14))
     }
 
-    /// Hover wash for footer buttons.
+    /// Hover wash for footer buttons. The package gives one wash for
+    /// both appearances — rgba(120,120,135,0.15) (rubric §1.6) — so
+    /// dark uses it too (v0.7.1 dark pass; previously white 0.12).
     static var hoverBackground: NSColor {
-        dynamic(light: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.15),
-                dark: NSColor(calibratedWhite: 1, alpha: 0.12))
+        NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.15)
     }
 
     static var primaryText: NSColor {
@@ -244,9 +246,11 @@ enum SNTheme {
                 dark: hex(0xFFCC00, alpha: 0.5))
     }
 
+    /// Inline-code chip wash. The package gives one value for both
+    /// appearances — rgba(120,120,135,0.16) (rubric §1.3) — so dark
+    /// uses it too (v0.7.1 dark pass; previously white 0.10).
     static var codeBackground: NSColor {
-        dynamic(light: NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.16),
-                dark: NSColor(calibratedWhite: 1, alpha: 0.10))
+        NSColor(calibratedRed: 0.47, green: 0.47, blue: 0.53, alpha: 0.16)
     }
 
     /// Task green — the package's rule is the same in both appearances
@@ -289,8 +293,11 @@ enum SNTheme {
             return dynamic(light: hex(0xCDEAC0),
                            dark: hex(0x2C3E2A))
         case .gray:
+            // Dark lifted a step in v0.7.1: at #333338 a grey note
+            // was nearly indistinguishable from a default card
+            // (#2E2E33); #3F3F46 keeps it visibly a colour.
             return dynamic(light: hex(0xE3E3E8),
-                           dark: hex(0x333338))
+                           dark: hex(0x3F3F46))
         }
     }
 

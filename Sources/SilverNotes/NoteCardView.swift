@@ -243,6 +243,15 @@ final class NoteCardView: NSView, NSTextViewDelegate, NSDraggingSource {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyCardSurface()
+        // The footer hairline bakes its CGColor the same way the
+        // card surface does; re-apply it alongside. The configured
+        // note's colour treatment (full-card tint / left-bar strip)
+        // is re-applied too — applyColour re-derives surfaceColor
+        // from the dynamic tint and ends in applyCardSurface.
+        footerRule.layer?.backgroundColor = SNTheme.hairline.cgColor
+        if let note = lastConfiguredNote {
+            applyColour(note)
+        }
     }
 
     /// Card surface + the package's dual shadow (audit 2.29): light gets

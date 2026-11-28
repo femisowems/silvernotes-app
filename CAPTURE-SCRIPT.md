@@ -7,7 +7,7 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 ## Prep (before you hit record)
 
-1. SilverNotes **v0.7.0** installed (Settings → Check for Updates).
+1. SilverNotes **v0.7.1** installed (Settings → Check for Updates).
 2. Settings → Appearance: density **Standard**, width **Standard**.
    Panel side: right. macOS appearance: **Light**.
 3. Have a Finder window open behind the panel with **one image file**
@@ -47,10 +47,18 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 ## Part 2 — dark mode (separate short recording, whenever)
 
-1. macOS appearance → **Dark** (Control Centre).
-2. Open the panel with ⌃⌥⌘Space, pause on All Notes (Standard).
-3. Scroll once, open the gear menu on the first card, pause.
-4. Stop. Switch back to Light whenever you like.
+1. Start in **Light**. Open the panel with ⌃⌥⌘Space and go to the
+   **Folders home** — leave the panel open for the next step.
+2. macOS appearance → **Dark** (Control Centre) *while the panel
+   stays open*. Pause on the folder home: names should stay
+   readable — dark cards, light text, nothing white-on-white.
+   *(The v0.7.1 flip check — the panel must follow the system
+   without being reopened.)*
+3. Click into All Notes (Standard), pause; scroll once; open the
+   gear menu on the first card, pause.
+4. Switch appearance back to **Light**, still with the panel open,
+   and pause — surfaces should follow back.
+5. Stop.
 
 ## What this covers
 
