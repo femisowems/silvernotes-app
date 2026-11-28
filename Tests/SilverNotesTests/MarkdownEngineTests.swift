@@ -160,7 +160,7 @@ final class MarkdownEngineTests: XCTestCase {
     func testToggleTaskFlipsCheckbox() throws {
         let source = "- [ ] a\n- [x] b"
         XCTAssertEqual(TaskLineEditing.toggleTask(atLine: 0, in: source)?.source, "- [x] a\n- [x] b")
-        XCTAssertEqual(TaskLineEditing.toggleTask(atLine: 1, in: source)?.source, "- [x] a\n- [ ] b")
+        XCTAssertEqual(TaskLineEditing.toggleTask(atLine: 1, in: source)?.source, "- [ ] a\n- [ ] b")
         XCTAssertNil(TaskLineEditing.toggleTask(atLine: 0, in: "plain line"))
         XCTAssertNil(TaskLineEditing.toggleTask(atLine: 5, in: source))
     }
