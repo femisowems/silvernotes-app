@@ -7,7 +7,7 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
 
 ## Prep (before you hit record)
 
-1. SilverNotes **v0.7.1** installed (Settings → Check for Updates).
+1. SilverNotes **v0.7.2** installed (Settings → Check for Updates).
 2. Settings → Appearance: density **Standard**, width **Standard**.
    Panel side: right. macOS appearance: **Light**.
 3. Have a Finder window open behind the panel with **one image file**
@@ -60,9 +60,23 @@ keep recording; the failure is data too. Total: ~3–4 minutes.
    and pause — surfaces should follow back.
 5. Stop.
 
+## Part 3 — the v0.7.2 surfaces (same session, ~1 minute)
+
+1. **Gear-menu dismiss** — open any note's gear menu, then click a
+   different note in the panel: the menu should close and the
+   click should do nothing else.
+2. **Checklist editing** — create a Checklist Note (+ menu), type
+   a task, press Enter (a fresh task starts), use **+ Add item**
+   once, then fold the note from its gear menu: the folded title
+   should read your task text (or "Checklist · 0 of 3 done").
+3. **Trash rows** — trash any note, open Trash: full-width rows
+   with the deleted date and Restore / Delete Forever; tap
+   Restore and confirm the note is back.
+
 ## What this covers
 
 Rubric states A1–A9, A11–A15 (A10 first-run welcome is prose-only in
 the mockup and can't be captured without a fresh store), v0.5.1
-confirmation checks 36–38, and the all-expanded default in every
-density (beat 15). Grading: VISUAL-AUDIT-RUBRIC.md (109 rows).
+confirmation checks 36–38, the all-expanded default in every
+density (beat 15), and the v0.7.2 checks 39–43 (Part 3).
+Grading: VISUAL-AUDIT-RUBRIC.md (109 rows).

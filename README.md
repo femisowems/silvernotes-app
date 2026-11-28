@@ -7,7 +7,7 @@
 <p align="center"><strong>Notes that live at the edge of your screen — one gesture away, never in your way.</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.7.1-e4572e.svg" alt="Latest version">
+  <img src="https://img.shields.io/badge/version-v0.7.2-e4572e.svg" alt="Latest version">
   <img src="https://img.shields.io/badge/macOS-13%2B-silver" alt="macOS 13 or later">
   <img src="https://img.shields.io/badge/Swift-AppKit-orange" alt="Swift and AppKit">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
@@ -24,10 +24,13 @@ nothing ever leaves the machine.
 
 *(Silver, for the light silver-grey panel the notes live on.)*
 
-> 🚧 **Work in progress** — SilverNotes is at **v0.7.1**: the
-> Dark Mode folder-home fix (theme surfaces now re-bake when the
-> system appearance flips, so folder names stay readable), on
-> top of v0.7.0: note
+> 🚧 **Work in progress** — SilverNotes is at **v0.7.2**: Trash
+> rebuilt as full-width rows (Restore / Delete Forever on the
+> row, permanent delete now asks first), the gear menu dismisses
+> on clicks anywhere in the app, checklist items are properly
+> editable (+ Add item, Enter continues the list, ⌘⏎ toggles),
+> three new note kinds (Bulleted List, Daily, Markdown) — on
+> top of v0.7.1's Dark Mode folder-home fix and v0.7.0: note
 > types at creation (Text, Checklist, Code, Plain Text, and File
 > notes from the + menu), a Duplicate action in every note's gear
 > menu, and card-height hardening so long notes are never
@@ -56,7 +59,7 @@ nothing ever leaves the machine.
 > which are tracked in [ROADMAP.md](ROADMAP.md).
 > v0.5.0 was installed and used on a real Mac on November 26, 2026,
 > via the app's own Check for Updates — the self-update path
-> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1, v0.6.2, v0.7.0 and v0.7.1 are CI-built;
+> confirmed working end to end. v0.5.1, v0.6.0, v0.6.1, v0.6.2, v0.7.0, v0.7.1 and v0.7.2 are CI-built;
 > their on-device confirmation is pending in the milestone capture
 > round (see the [status notes](#honest-status)). Features, behaviour
 > and this README may change between versions, and things may break.
@@ -413,6 +416,15 @@ that folder and everything is gone.
   folders work. In the developer's words, "a working version with a
   few bugs" — those first-use bugs are being collected in
   [ROADMAP.md](ROADMAP.md), which is also where the version arc lives.
+- **v0.7.2 (November 27, 2026) — Trash rows, gear-menu dismiss
+  fix, checklist item editing, new note kinds, CI-built,
+  on-device confirmation pending.** Trash renders full-width
+  rows (title, deleted date, Restore / Delete Forever) instead
+  of cards; permanent delete asks first. The gear menu now
+  dismisses on clicks anywhere in the app. Checklists gain
+  + Add item, Enter-to-continue, ⌘⏎ toggle, Tab sub-items and
+  a hover delete; the + menu adds Bulleted List, Daily and
+  Markdown note kinds; checklist-first notes title properly.
 - **v0.7.1 (November 27, 2026) — Dark Mode folder-home fix,
   CI-built, on-device confirmation pending.** Folder names
   rendered near-invisible in Dark Mode: theme surfaces baked
